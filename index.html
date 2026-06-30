@@ -200,7 +200,7 @@ function computeDay(day) {
   const comissaoBase = valorFaturado * COMMISSION_RATE;
   const iva = comissaoBase * IVA_RATE;
   const comissaoComIva = comissaoBase + iva;
-  const entregar = valorFaturado - comissaoComIva - combustivel - portagens - totalOutrasDespesas - multibanco;
+  const entregar = valorFaturado - comissaoComIva - combustivel + portagens - totalOutrasDespesas - multibanco;
   return { totalKm, valorFaturado, multibanco, portagens, combustivel, dinheiro, totalOutrasDespesas, totalDespesas, comissaoBase, iva, comissaoComIva, entregar };
 }
 
