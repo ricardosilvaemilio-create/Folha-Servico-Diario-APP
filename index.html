@@ -592,17 +592,20 @@ function renderResumo() {
       el("span", { style:{ color:"#60a5fa", fontWeight:600 } }, "− "+formatEur(totDeposito))));
   }
 
-  // Outras despesas por categoria
-  if (Object.keys(catTotals).length > 0) {
+  // Outras despesas por categoria (sem Depósito)
+  const catEntries = Object.entries(catTotals).filter(([cat]) => cat !== "Depósito").sort((a,b)=>b[1]-a[1]);
+  if (catEntries.length > 0) {
     lines.append(el("div", { style:{ fontSize:11, color:"#666", margin:"6px 0 2px", fontWeight:600, textTransform:"uppercase", letterSpacing:0.5 } }, "🧾 Outras Despesas"));
-    Object.entries(catTotals).sort((a,b)=>b[1]-a[1]).forEach(([cat, val]) => {
+    catEntries.forEach(([cat, val]) => {
       lines.append(el("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:13, paddingLeft:12 } },
         el("span", { style:{ color:"#888" } }, "· "+cat),
         el("span", { style:{ color:"#f87171", fontWeight:600 } }, "− "+formatEur(val))));
     });
-    lines.append(el("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:12, paddingLeft:12, marginTop:2 } },
-      el("span", { style:{ color:"#666" } }, "Total outras despesas"),
-      el("span", { style:{ color:"#f87171" } }, "− "+formatEur(totOutrasRes))));
+    if (catEntries.length > 1) {
+      lines.append(el("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:12, paddingLeft:12, marginTop:2 } },
+        el("span", { style:{ color:"#666" } }, "Total outras despesas"),
+        el("span", { style:{ color:"#f87171" } }, "− "+formatEur(totOutrasRes))));
+    }
   }
 
   // Portagens (soma)
