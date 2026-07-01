@@ -333,17 +333,21 @@ function renderHoje(){
   ));
 
   // Entregar
+  const depositos=(b.exps||[]).filter(e=>e.category==="Depósito").reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
+  const outrasSDep=(b.exps||[]).filter(e=>e.category!=="Depósito").reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
+
   wrap.append(h("div",{style:{background:"linear-gradient(135deg,#1a2e1a,#1e1e1e)",border:"1px solid #4ade8044",borderRadius:"12px",padding:"16px"}},
     h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#4ade80",fontSize:"14px"}},"✅ Valor a Entregar"),
     h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Faturado"),h("span",{id:"c_fat_r",style:{color:"#4ade80"}},"+ "+eur(c.fat))),
     h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Comissão c/ IVA"),h("span",{id:"c_com_r",style:{color:"#f87171"}},"− "+eur(c.com))),
     h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Combustível"),h("span",{id:"c_comb_r",style:{color:"#f87171"}},"− "+eur(c.comb))),
     h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Portagens"),h("span",{id:"c_port_r",style:{color:"#4ade80"}},"+ "+eur(c.port))),
-    h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Outras Despesas"),h("span",{id:"c_outras_r",style:{color:"#f87171"}},"− "+eur(c.outras))),
+    h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Outras Despesas"),h("span",{id:"c_outras_r",style:{color:"#f87171"}},"− "+eur(outrasSDep))),
+    depositos>0?h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"🏦 Depósito Bancário"),h("span",{id:"c_dep_r",style:{color:"#60a5fa"}},"− "+eur(depositos))):null,
     h("div",{class:"row",style:{marginBottom:"10px"}},h("span",{style:{color:"#aaa"}},"Multibanco"),h("span",{id:"c_mb_r",style:{color:"#f87171"}},"− "+eur(c.mb))),
     h("div",{style:{background:c.entr>=0?"#4ade8022":"#f8717122",borderRadius:"10px",padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
       h("span",{style:{fontWeight:"700",fontSize:"15px"}},"Entregar"),
-      h("span",{id:"c_entr",style:{fontWeight:"800",fontSize:"24px",color:c.entr>=0?"#4ade80":"#f87171"}},eur(c.entr))
+      h("span",{id:"c_entr",style:{fontWeight:"800",fontSize:"24px",color:c.entr>=0?"#4ade80":"#f87171"}},eur(c.fat-c.com-c.comb+c.port-outrasSDep-depositos-c.mb))
     )
   ));
 
