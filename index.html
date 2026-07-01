@@ -147,11 +147,8 @@ function updateDayLocal(date, patch) {
   setState({ records: updated });
 }
 
-let saveTimeout = null;
 function updateDayDebounced(date, patch) {
   updateDayLocal(date, patch);
-  clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => saveDayToSheet(date, getDay(date)), 700);
 }
 
 async function confirmDeleteDay() {
@@ -626,14 +623,29 @@ function renderResumo() {
 
 // ── RENDER: BOTTOM NAV ──
 function renderBottomNav() {
-  const nav = el("div", { style:{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:420, background:"#1a1a1a", borderTop:"1px solid #333", display:"flex" } });
-  [["🚕","Hoje"],["📋","Histórico"],["📈","Relatório"],["📊","Resumo"]].forEach(([icon,name],i)=>{
-    nav.append(el("button", { style:{ flex:1, padding:"12px 0", background:"none", border:"none", cursor:"pointer",
-        color: state.tab===i?"#facc15":"#555", fontSize:10, fontWeight:600, display:"flex", flexDirection:"column", alignItems:"center", gap:2 },
-      onclick: ()=>setState({ tab:i }) },
-      el("span", { style:{ fontSize:20 } }, icon), name
-    ));
-  });
+  const nav = el("div", { style:{ position:"fixed", bottom:0, left:"50%", transform:"translateX(-50%)", width:"100%", maxWidth:420, background:"#1a1a1a", borderTop:"1px solid #333", display:"flex", alignItems:"center", padding:"8px 16px", gap:12 } });
+
+  if (state.tab === 0) {
+    // No separador Hoje: botão Gravar ao centro
+    nav.append(el("button", {
+      style:{ flex:1, padding:"13px", background:"#facc15", border:"none", borderRadius:12, color:"#111", fontWeight:800, fontSize:15, cursor:"pointer", display:"flex", alignItems:"center", justifyContent:"center", gap:8 },
+      onclick: async () => {
+        const date = state.date;
+        const day = getDay(date);
+        await saveDayToSheet(date, day);
+        if (!state.syncError) {
+          // feedback visual breve
+          setState({ saveSuccess: true });
+          setTimeout(() => setState({ saveSuccess: false }), 2000);
+        }
+      }
+    }, state.saveSuccess ? "✅ Guardado!" : "💾 Gravar Dia"));
+  } else {
+    // Nos outros separadores: apenas um indicador discreto
+    nav.append(el("div", { style:{ flex:1, textAlign:"center", fontSize:11, color:"#555" } }, 
+      state.syncing ? "🔄 A sincronizar..." : ""));
+  }
+
   return nav;
 }
 
