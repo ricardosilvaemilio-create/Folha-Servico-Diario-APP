@@ -8,541 +8,547 @@
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #111; color: #fff; }
   #app { max-width: 420px; margin: 0 auto; min-height: 100vh; padding-bottom: 80px; }
-  input { font-family: inherit; }
+  input, button { font-family: inherit; }
   ::placeholder { color: #555; }
-  .spin { animation: spin 1s linear infinite; }
-  @keyframes spin { to { transform: rotate(360deg); } }
-  .fadein { animation: fadein .2s ease; }
-  @keyframes fadein { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; } }
-  .inp {
-    background: #2a2a2a; color: #fff; border: 1px solid #444;
-    border-radius: 8px; padding: 8px 12px; width: 100%; font-size: 15px;
-    font-family: inherit; outline: none;
-  }
-  .inp:focus { border-color: #facc15; }
+  .inp { background:#2a2a2a; color:#fff; border:1px solid #444; border-radius:8px; padding:8px 12px; width:100%; font-size:15px; outline:none; }
+  .inp:focus { border-color:#facc15; }
+  .card { background:#1e1e1e; border-radius:12px; padding:16px; margin-bottom:12px; }
+  .lbl { font-size:11px; color:#888; display:block; margin-bottom:4px; }
+  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .row { display:flex; justify-content:space-between; align-items:center; font-size:13px; margin-bottom:6px; }
+  .spin { animation:spin 1s linear infinite; display:inline-block; }
+  @keyframes spin { to { transform:rotate(360deg); } }
 </style>
 </head>
 <body>
 <div id="app"></div>
+<div id="modals"></div>
 <script>
-const COMMISSION_RATE = 0.40;
-const IVA_RATE = 0.23;
-const EXPENSE_CATEGORIES = ["Depósito", "Extintor", "Inspeção", "Lavagem", "Oficina", "Outros"];
+const CR = 0.40, IVA = 0.23;
+const CATS = ["Depósito","Extintor","Inspeção","Lavagem","Oficina","Outros"];
 
-let state = {
-  backendUrl: "",
-  configured: false,
-  loading: false,
-  syncing: false,
-  saveSuccess: false,
-  syncError: "",
-  records: {},
-  tab: 0,
-  date: todayStr(),
-  reportMonth: todayStr().slice(0, 7),
-  loadedMonths: {},
-  expModal: false,
-  deleteModal: false,
-  editExpIndex: null,
-  expForm: { category: EXPENSE_CATEGORIES[0], desc: "", valor: "" },
+// Estado global — nunca inclui dados dos inputs (esses ficam no DOM)
+let S = {
+  url:"", ok:false, loading:false, syncing:false, saved:false, err:"",
+  records:{}, tab:0, date:today(), month:today().slice(0,7),
+  loadedMonths:{}, expModal:false, deleteModal:false,
+  editExpIdx:null, expForm:{cat:CATS[0],desc:"",val:""}
 };
 
-let editBuffer = {};
+// Buffer de edição — só é lido quando se grava
+let B = newBuf();
 
-function todayStr() { return new Date().toISOString().split("T")[0]; }
-function formatEur(v) { return "€" + Number(v || 0).toFixed(2); }
-function formatKm(v) { return Number(v || 0).toFixed(0) + " km"; }
+function today(){ return new Date().toISOString().split("T")[0]; }
+function eur(v){ return "€"+Number(v||0).toFixed(2); }
+function km(v){ return Number(v||0).toFixed(0)+" km"; }
+function newBuf(d){
+  d = d||{};
+  return {kmI:d.kmInicial||"", kmF:d.kmFinal||"", fat:d.valorFaturado||"",
+    mb:d.multibanco||"", port:d.portagens||"", comb:d.combustivel||"",
+    obs:d.obs||"", exps:JSON.parse(JSON.stringify(d.expenses||[]))};
+}
+function getDay(d){ return S.records[d]||{}; }
+function calc(b){
+  const kmI=parseFloat(b.kmI)||0, kmF=parseFloat(b.kmF)||0;
+  const tkm = kmF>kmI?kmF-kmI:0;
+  const fat=parseFloat(b.fat)||0, mb=parseFloat(b.mb)||0;
+  const port=parseFloat(b.port)||0, comb=parseFloat(b.comb)||0;
+  const outras=(b.exps||[]).reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
+  const comB=fat*CR, ivaV=comB*IVA, com=comB+ivaV;
+  const entr=fat-com-comb+port-outras-mb;
+  return {tkm,fat,mb,port,comb,outras,comB,ivaV,com,entr,din:fat-mb};
+}
 
-function el(tag, attrs, ...children) {
-  const e = document.createElement(tag);
-  for (const k in (attrs || {})) {
-    if (k === "style") Object.assign(e.style, attrs[k]);
-    else if (k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(), attrs[k]);
-    else e.setAttribute(k, attrs[k]);
+// Lê os inputs do DOM para o buffer (chamado antes de gravar)
+function syncBufferFromDOM(){
+  const g = id => { const e=document.getElementById(id); return e?e.value:""; };
+  B.kmI=g("f_kmI"); B.kmF=g("f_kmF"); B.fat=g("f_fat");
+  B.mb=g("f_mb"); B.port=g("f_port"); B.comb=g("f_comb"); B.obs=g("f_obs");
+}
+
+// API
+async function apiGet(action,params={}){
+  const u=new URL(S.url); u.searchParams.set("action",action);
+  for(const k in params) u.searchParams.set(k,params[k]);
+  return (await fetch(u.toString())).json();
+}
+async function apiPost(body){
+  return (await fetch(S.url,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(body)})).json();
+}
+
+async function loadMonth(m){
+  if(S.loadedMonths[m]) return;
+  S.loading=true; S.err=""; render();
+  try{
+    const d=await apiGet("getMonth",{month:m});
+    if(d.error) throw new Error(d.error);
+    (d.days||[]).forEach(r=>{ S.records[r.date]={kmInicial:r.kmInicial,kmFinal:r.kmFinal,valorFaturado:r.valorFaturado,multibanco:r.multibanco,portagens:r.portagens,combustivel:r.combustivel,obs:r.obs||"",expenses:r.expenses||[]}; });
+    S.loadedMonths[m]=true;
+  }catch(e){ S.err="Erro: "+e.message; }
+  S.loading=false; render();
+}
+
+async function saveDay(){
+  syncBufferFromDOM();
+  const date=S.date;
+  S.records[date]={kmInicial:B.kmI,kmFinal:B.kmF,valorFaturado:B.fat,multibanco:B.mb,portagens:B.port,combustivel:B.comb,obs:B.obs,expenses:JSON.parse(JSON.stringify(B.exps))};
+  S.syncing=true; S.err=""; renderStatus();
+  try{
+    await apiPost({action:"saveDay",data:date,day:{kmInicial:B.kmI,kmFinal:B.kmF,valorFaturado:B.fat,multibanco:B.mb,portagens:B.port,combustivel:B.comb,obs:B.obs,expenses:B.exps}});
+    S.saved=true; S.syncing=false; renderStatus();
+    setTimeout(()=>{ S.saved=false; renderStatus(); },2000);
+  }catch(e){ S.err="Falha: "+e.message; S.syncing=false; renderStatus(); }
+}
+
+async function deleteDay(){
+  S.syncing=true; renderStatus();
+  try{
+    await apiPost({action:"deleteDay",data:S.date});
+    delete S.records[S.date];
+    B=newBuf();
+  }catch(e){ S.err="Falha: "+e.message; }
+  S.syncing=false; S.deleteModal=false; render();
+}
+
+// Renderiza só o botão/status sem tocar nos inputs
+function renderStatus(){
+  const btn=document.getElementById("btn_save");
+  const spin=document.getElementById("hdr_spin");
+  const errEl=document.getElementById("err_bar");
+  if(btn){
+    btn.textContent=S.saved?"✅ Guardado!":"💾 Gravar Dia";
+    btn.style.background=S.saved?"#16a34a":"#facc15";
   }
-  children.flat().forEach(c => { if (c != null) e.append(c.nodeType ? c : document.createTextNode(c)); });
+  if(spin) spin.style.display=S.syncing?"inline-block":"none";
+  if(errEl){ errEl.textContent=S.err?"⚠️ "+S.err:""; errEl.style.display=S.err?"block":"none"; }
+  // Atualiza cálculos em tempo real sem re-render
+  updateCalc();
+}
+
+// Atualiza apenas os valores calculados no DOM
+function updateCalc(){
+  const g=id=>{ const e=document.getElementById(id); return e?e.value:""; };
+  const b={kmI:g("f_kmI"),kmF:g("f_kmF"),fat:g("f_fat"),mb:g("f_mb"),port:g("f_port"),comb:g("f_comb"),exps:B.exps};
+  const c=calc(b);
+  const set=(id,v)=>{ const e=document.getElementById(id); if(e) e.textContent=v; };
+  set("c_tkm",km(c.tkm)); set("c_din",eur(c.din));
+  set("c_comB","Base (40% de "+eur(c.fat)+"): "+eur(c.comB));
+  set("c_iva","IVA (23%): "+eur(c.ivaV));
+  set("c_com",eur(c.com));
+  set("c_fat_r","+ "+eur(c.fat)); set("c_com_r","− "+eur(c.com));
+  set("c_comb_r","− "+eur(c.comb)); set("c_port_r","+ "+eur(c.port));
+  set("c_outras_r","− "+eur(c.outras)); set("c_mb_r","− "+eur(c.mb));
+  set("c_entr",eur(c.entr));
+  const el=document.getElementById("c_entr");
+  if(el) el.style.color=c.entr>=0?"#4ade80":"#f87171";
+}
+
+function h(tag,attrs,...kids){
+  const e=document.createElement(tag);
+  for(const k in (attrs||{})){
+    if(k==="style") Object.assign(e.style,attrs[k]);
+    else if(k==="class") e.className=attrs[k];
+    else if(k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(),attrs[k]);
+    else e.setAttribute(k,attrs[k]);
+  }
+  kids.flat().forEach(c=>{ if(c!=null) e.append(c instanceof Node?c:document.createTextNode(String(c))); });
   return e;
 }
 
-function setState(patch) {
-  Object.assign(state, patch);
-  // Não faz re-render se estamos no tab Hoje e a única mudança é no buffer
-  render();
-}
+// ── RENDER PRINCIPAL ──
+function render(){
+  const root=document.getElementById("app");
+  const mods=document.getElementById("modals");
+  root.innerHTML=""; mods.innerHTML="";
 
-// Atualiza o buffer SEM re-render
-function updateBuffer(key, value) {
-  editBuffer[key] = value;
-}
-function getDay(d) {
-  return state.records[d] || { kmInicial: "", kmFinal: "", valorFaturado: "", multibanco: "", portagens: "", combustivel: "", obs: "", expenses: [] };
-}
+  if(!S.ok){ root.append(renderSetup()); return; }
 
-function initBuffer(date) {
-  const day = getDay(date);
-  editBuffer = {
-    kmInicial: day.kmInicial, kmFinal: day.kmFinal,
-    valorFaturado: day.valorFaturado, multibanco: day.multibanco,
-    portagens: day.portagens, combustivel: day.combustivel,
-    obs: day.obs, expenses: JSON.parse(JSON.stringify(day.expenses || []))
-  };
-}
+  root.append(renderHeader());
 
-async function apiGet(action, params = {}) {
-  const url = new URL(state.backendUrl);
-  url.searchParams.set("action", action);
-  for (const k in params) url.searchParams.set(k, params[k]);
-  return (await fetch(url.toString())).json();
-}
-async function apiPost(body) {
-  return (await fetch(state.backendUrl, {
-    method: "POST", headers: { "Content-Type": "text/plain" }, body: JSON.stringify(body)
-  })).json();
-}
+  const errBar=h("div",{id:"err_bar",style:{margin:"10px 16px 0",background:"#2e1a1a",border:"1px solid #f8717155",borderRadius:"10px",padding:"8px 12px",fontSize:"11px",color:"#f87171",display:S.err?"block":"none"}},"⚠️ "+S.err);
+  root.append(errBar);
 
-async function loadMonth(monthStr) {
-  if (state.loadedMonths[monthStr]) return;
-  setState({ loading: true, syncError: "" });
-  try {
-    const data = await apiGet("getMonth", { month: monthStr });
-    if (data.error) throw new Error(data.error);
-    const records = { ...state.records };
-    (data.days || []).forEach(d => {
-      records[d.date] = { kmInicial: d.kmInicial, kmFinal: d.kmFinal, valorFaturado: d.valorFaturado, multibanco: d.multibanco, portagens: d.portagens, combustivel: d.combustivel, obs: d.obs || "", expenses: d.expenses || [] };
-    });
-    setState({ records, loading: false, loadedMonths: { ...state.loadedMonths, [monthStr]: true } });
-    initBuffer(state.date);
-  } catch (err) {
-    setState({ loading: false, syncError: "Erro ao ligar: " + err.message });
+  if(S.loading){ root.append(h("div",{style:{textAlign:"center",padding:"60px",color:"#888"}},"A carregar...")); }
+  else{
+    const content=h("div",{style:{padding:"16px"}});
+    if(S.tab===0) content.append(renderHoje());
+    else if(S.tab===1) content.append(renderHistorico());
+    else if(S.tab===2) content.append(renderRelatorio());
+    else content.append(renderResumo());
+    root.append(content);
   }
+
+  root.append(renderNav());
+
+  if(S.deleteModal) mods.append(renderDeleteModal());
+  if(S.expModal) mods.append(renderExpModal());
 }
 
-async function saveDay() {
-  const date = state.date;
-  const updated = { ...state.records };
-  updated[date] = { ...editBuffer, expenses: JSON.parse(JSON.stringify(editBuffer.expenses || [])) };
-  state.records = updated;
-  setState({ syncing: true, syncError: "" });
-  try {
-    await apiPost({ action: "saveDay", data: date, day: editBuffer });
-    setState({ syncing: false, saveSuccess: true });
-    setTimeout(() => setState({ saveSuccess: false }), 2000);
-  } catch (err) {
-    setState({ syncing: false, syncError: "Falha ao guardar: " + err.message });
-  }
-}
-
-async function deleteDay() {
-  setState({ syncing: true });
-  try {
-    await apiPost({ action: "deleteDay", data: state.date });
-    const updated = { ...state.records };
-    delete updated[state.date];
-    initBuffer(state.date);
-    setState({ records: updated, syncing: false, deleteModal: false });
-  } catch (err) {
-    setState({ syncing: false, syncError: "Falha ao apagar: " + err.message });
-  }
-}
-
-function computeDay(day) {
-  const kmInicial = parseFloat(day.kmInicial) || 0, kmFinal = parseFloat(day.kmFinal) || 0;
-  const totalKm = kmFinal > kmInicial ? kmFinal - kmInicial : 0;
-  const valorFaturado = parseFloat(day.valorFaturado) || 0;
-  const multibanco = parseFloat(day.multibanco) || 0;
-  const portagens = parseFloat(day.portagens) || 0;
-  const combustivel = parseFloat(day.combustivel) || 0;
-  const dinheiro = valorFaturado - multibanco;
-  const totalOutrasDespesas = (day.expenses || []).reduce((s, e) => s + (parseFloat(e.valor) || 0), 0);
-  const totalDespesas = combustivel + portagens + totalOutrasDespesas;
-  const comissaoBase = valorFaturado * COMMISSION_RATE;
-  const iva = comissaoBase * IVA_RATE;
-  const comissaoComIva = comissaoBase + iva;
-  const entregar = valorFaturado - comissaoComIva - combustivel + portagens - totalOutrasDespesas - multibanco;
-  return { totalKm, valorFaturado, multibanco, portagens, combustivel, dinheiro, totalOutrasDespesas, totalDespesas, comissaoBase, iva, comissaoComIva, entregar };
-}
-
-function renderSetup() {
-  const root = el("div", { style: { padding: "24px", display: "flex", flexDirection: "column", justifyContent: "center", minHeight: "100vh" } });
-  let urlInput = state.backendUrl;
-  root.append(
-    el("div", { style: { textAlign: "center", marginBottom: 32 } },
-      el("div", { style: { fontSize: 48, marginBottom: 8 } }, "🚕"),
-      el("div", { style: { fontWeight: 800, fontSize: 20, color: "#facc15" } }, "Folha de Serviço"),
-      el("div", { style: { fontSize: 13, color: "#888", marginTop: 4 } }, "Liga à tua Google Sheet")
+function renderSetup(){
+  let urlVal=S.url;
+  return h("div",{style:{padding:"24px",display:"flex",flexDirection:"column",justifyContent:"center",minHeight:"100vh"}},
+    h("div",{style:{textAlign:"center",marginBottom:"32px"}},
+      h("div",{style:{fontSize:"48px",marginBottom:"8px"}},"🚕"),
+      h("div",{style:{fontWeight:"800",fontSize:"20px",color:"#facc15"}},"Folha de Serviço"),
+      h("div",{style:{fontSize:"13px",color:"#888",marginTop:"4px"}},"Liga à tua Google Sheet")
     ),
-    el("div", { style: { marginBottom: 20 } },
-      el("span", { style: { fontSize: 12, color: "#888", display: "block", marginBottom: 6 } }, "URL do Backend (Google Apps Script)"),
-      el("input", { placeholder: "https://script.google.com/macros/s/.../exec", value: urlInput, class: "inp", style: { fontSize: 13 }, oninput: e => { urlInput = e.target.value; } })
+    h("div",{style:{marginBottom:"20px"}},
+      h("span",{style:{fontSize:"12px",color:"#888",display:"block",marginBottom:"6px"}},"URL do Backend (Google Apps Script)"),
+      h("input",{class:"inp",placeholder:"https://script.google.com/macros/s/.../exec",value:urlVal,style:{fontSize:"13px"},oninput:e=>{urlVal=e.target.value;}})
     ),
-    state.syncError ? el("div", { style: { background: "#2e1a1a", border: "1px solid #f8717155", borderRadius: 10, padding: "10px 14px", fontSize: 12, color: "#f87171", marginBottom: 16 } }, state.syncError) : null,
-    el("button", {
-      style: { width: "100%", background: "#facc15", color: "#111", border: "none", borderRadius: 12, padding: "14px", fontWeight: 800, fontSize: 15, cursor: "pointer" },
-      onclick: async () => {
-        if (!urlInput.trim()) { setState({ syncError: "Preenche o URL do backend." }); return; }
-        state.backendUrl = urlInput;
-        setState({ configured: true });
-        await loadMonth(state.date.slice(0, 7));
-        initBuffer(state.date);
-      }
-    }, "Entrar"),
-    el("div", { style: { fontSize: 11, color: "#555", marginTop: 20, textAlign: "center" } }, "Dados guardados na tua Google Sheet, organizados por mês.")
+    S.err?h("div",{style:{background:"#2e1a1a",border:"1px solid #f8717155",borderRadius:"10px",padding:"10px 14px",fontSize:"12px",color:"#f87171",marginBottom:"16px"}},S.err):null,
+    h("button",{style:{width:"100%",background:"#facc15",color:"#111",border:"none",borderRadius:"12px",padding:"14px",fontWeight:"800",fontSize:"15px",cursor:"pointer"},
+      onclick:async()=>{
+        if(!urlVal.trim()){S.err="Preenche o URL.";render();return;}
+        S.url=urlVal; S.ok=true;
+        await loadMonth(S.date.slice(0,7));
+        B=newBuf(getDay(S.date));
+        render();
+      }},"Entrar"),
+    h("div",{style:{fontSize:"11px",color:"#555",marginTop:"20px",textAlign:"center"}},"Dados guardados na tua Google Sheet.")
   );
-  return root;
 }
 
-function renderHeader() {
-  const tabs = ["Hoje", "Histórico", "Relatório", "Resumo"];
-  const header = el("div", { style: { background: "#1a1a1a", padding: "16px 16px 0", borderBottom: "1px solid #333", position: "sticky", top: 0, zIndex: 10 } });
-  const topRow = el("div", { style: { display: "flex", alignItems: "center", gap: 10, marginBottom: 12 } },
-    el("span", { style: { fontSize: 28 } }, "🚕"),
-    el("div", { style: { flex: 1 } },
-      el("div", { style: { fontWeight: 700, fontSize: 17, color: "#facc15" } }, "Folha de Serviço"),
-      el("div", { style: { fontSize: 11, color: "#888" } }, "Registo Diário de Táxi")
-    )
+function renderHeader(){
+  const tabs=["Hoje","Histórico","Relatório","Resumo"];
+  const hdr=h("div",{style:{background:"#1a1a1a",padding:"16px 16px 0",borderBottom:"1px solid #333",position:"sticky",top:"0",zIndex:"10"}});
+  const top=h("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"12px"}},
+    h("span",{style:{fontSize:"28px"}},"🚕"),
+    h("div",{style:{flex:"1"}},
+      h("div",{style:{fontWeight:"700",fontSize:"17px",color:"#facc15"}},"Folha de Serviço"),
+      h("div",{style:{fontSize:"11px",color:"#888"}},"Registo Diário de Táxi")
+    ),
+    h("span",{id:"hdr_spin",class:"spin",style:{fontSize:"16px",display:S.syncing?"inline-block":"none"}},"🔄"),
+    h("button",{style:{background:"none",border:"none",color:"#666",fontSize:"11px",cursor:"pointer"},onclick:()=>{S.ok=false;render();}},"Sair")
   );
-  if (state.syncing) { const s = el("span", {}, "🔄"); s.className = "spin"; topRow.append(s); }
-  else topRow.append(el("button", { style: { background: "none", border: "none", color: "#666", fontSize: 11, cursor: "pointer" }, onclick: () => setState({ configured: false }) }, "Sair"));
-  header.append(topRow);
-  const nav = el("div", { style: { display: "flex" } });
-  tabs.forEach((t, i) => nav.append(el("button", {
-    style: { flex: 1, padding: "10px 0", fontSize: 13, fontWeight: 600, background: "none", border: "none", cursor: "pointer", color: state.tab === i ? "#facc15" : "#888", borderBottom: state.tab === i ? "2px solid #facc15" : "2px solid transparent" },
-    onclick: () => setState({ tab: i })
-  }, t)));
-  header.append(nav);
-  return header;
+  hdr.append(top);
+  const nav=h("div",{style:{display:"flex"}});
+  tabs.forEach((t,i)=>nav.append(h("button",{
+    style:{flex:"1",padding:"10px 0",fontSize:"13px",fontWeight:"600",background:"none",border:"none",cursor:"pointer",
+      color:S.tab===i?"#facc15":"#888",borderBottom:S.tab===i?"2px solid #facc15":"2px solid transparent"},
+    onclick:()=>{if(S.tab!==i){syncBufferFromDOM();S.tab=i;render();}}
+  },t)));
+  hdr.append(nav);
+  return hdr;
 }
 
-function renderHoje() {
-  const date = state.date;
-  const buf = editBuffer;
-  const c = computeDay(buf);
-  const wrap = el("div", { class: "fadein" });
+function renderHoje(){
+  const d=S.date, day=getDay(d), b=B;
+  const c=calc(b);
+  const wrap=h("div",{});
 
-  const dateRow = el("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 16 } },
-    el("span", { style: { fontSize: 13, color: "#aaa" } }, "📅 Data:"),
-    el("input", { type: "date", value: date, style: { background: "#222", border: "1px solid #444", color: "#fff", borderRadius: 8, padding: "4px 10px", fontSize: 13 },
-      onchange: async e => { const d = e.target.value; initBuffer(d); setState({ date: d }); await loadMonth(d.slice(0, 7)); initBuffer(d); } })
+  // Data
+  const dateRow=h("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"16px"}},
+    h("span",{style:{fontSize:"13px",color:"#aaa"}},"📅 Data:"),
+    h("input",{type:"date",value:d,style:{background:"#222",border:"1px solid #444",color:"#fff",borderRadius:"8px",padding:"4px 10px",fontSize:"13px"},
+      onchange:async e=>{
+        syncBufferFromDOM();
+        S.date=e.target.value;
+        await loadMonth(S.date.slice(0,7));
+        B=newBuf(getDay(S.date));
+        render();
+      }})
   );
-  if (state.records[date]) {
-    dateRow.append(el("button", { style: { marginLeft: "auto", background: "#7f1d1d", border: "none", borderRadius: 8, padding: "5px 12px", color: "#fca5a5", fontSize: 12, fontWeight: 700, cursor: "pointer" }, onclick: () => setState({ deleteModal: true }) }, "🗑️ Apagar Dia"));
-  }
+  if(S.records[d]) dateRow.append(h("button",{style:{marginLeft:"auto",background:"#7f1d1d",border:"none",borderRadius:"8px",padding:"5px 12px",color:"#fca5a5",fontSize:"12px",fontWeight:"700",cursor:"pointer"},onclick:()=>{S.deleteModal=true;render();}},"🗑️ Apagar Dia"));
   wrap.append(dateRow);
 
-  function field(label, key, placeholder, type = "number") {
-    return el("div", {},
-      el("span", { style: { fontSize: 11, color: "#888", display: "block", marginBottom: 4 } }, label),
-      el("input", { type, placeholder, value: buf[key] || "", class: "inp", onchange: e => { buf[key] = e.target.value; } })
-    );
-  }
-
-  wrap.append(el("div", { style: { background: "#1e1e1e", borderRadius: 12, padding: 16, marginBottom: 12 } },
-    el("div", { style: { fontWeight: 700, marginBottom: 12, color: "#facc15", fontSize: 14 } }, "📍 Quilómetros"),
-    el("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 } },
-      field("KM Inicial", "kmInicial", "0"), field("KM Final", "kmFinal", "0")
+  // KM
+  const kmCard=h("div",{class:"card"},
+    h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#facc15",fontSize:"14px"}},"📍 Quilómetros"),
+    h("div",{class:"grid2",style:{marginBottom:"10px"}},
+      mkField("KM Inicial","f_kmI",b.kmI,"0"),
+      mkField("KM Final","f_kmF",b.kmF,"0")
     ),
-    el("div", { style: { background: "#facc1520", borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between", alignItems: "center" } },
-      el("span", { style: { color: "#aaa", fontSize: 13 } }, "Total do Dia"),
-      el("span", { style: { color: "#facc15", fontWeight: 800, fontSize: 20 } }, formatKm(c.totalKm))
-    )
-  ));
-
-  wrap.append(el("div", { style: { background: "#1e1e1e", borderRadius: 12, padding: 16, marginBottom: 12 } },
-    el("div", { style: { fontWeight: 700, marginBottom: 12, color: "#4ade80", fontSize: 14 } }, "💶 Faturação"),
-    el("div", { style: { marginBottom: 10 } }, field("Valor Total Faturado (€)", "valorFaturado", "0.00")),
-    el("div", { style: { marginBottom: 10 } }, field("Recebido em Multibanco (€)", "multibanco", "0.00")),
-    el("div", { style: { background: "#1a2e1a", borderRadius: 8, padding: "10px 14px", display: "flex", justifyContent: "space-between" } },
-      el("span", { style: { color: "#aaa", fontSize: 13 } }, "Recebido em Dinheiro"),
-      el("span", { style: { color: "#4ade80", fontWeight: 700, fontSize: 16 } }, formatEur(c.dinheiro))
-    )
-  ));
-
-  wrap.append(el("div", { style: { background: "#1e1e1e", borderRadius: 12, padding: 16, marginBottom: 12 } },
-    el("div", { style: { fontWeight: 700, marginBottom: 12, color: "#fb923c", fontSize: 14 } }, "⛽ Combustível & Portagens"),
-    el("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 } },
-      field("Combustível (€)", "combustivel", "0.00"), field("Portagens (€)", "portagens", "0.00")
-    )
-  ));
-
-  const despCard = el("div", { style: { background: "#1e1e1e", borderRadius: 12, padding: 16, marginBottom: 12 } },
-    el("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 } },
-      el("div", { style: { fontWeight: 700, color: "#f87171", fontSize: 14 } }, "🧾 Outras Despesas"),
-      el("button", { style: { background: "#f87171", color: "#fff", border: "none", borderRadius: 8, padding: "5px 12px", fontSize: 12, fontWeight: 700, cursor: "pointer" },
-        onclick: () => setState({ expModal: true, editExpIndex: null, expForm: { category: EXPENSE_CATEGORIES[0], desc: "", valor: "" } }) }, "+ Adicionar")
+    h("div",{style:{background:"#facc1520",borderRadius:"8px",padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+      h("span",{style:{color:"#aaa",fontSize:"13px"}},"Total do Dia"),
+      h("span",{id:"c_tkm",style:{color:"#facc15",fontWeight:"800",fontSize:"20px"}},km(c.tkm))
     )
   );
-  const exps = buf.expenses || [];
-  if (!exps.length) despCard.append(el("div", { style: { textAlign: "center", color: "#555", fontSize: 13, padding: "12px 0" } }, "Sem despesas extra registadas"));
-  exps.forEach((e, idx) => {
-    despCard.append(el("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", background: "#2a2a2a", borderRadius: 8, padding: "8px 12px", marginBottom: 6 } },
-      el("div", {},
-        el("div", { style: { fontSize: 13, fontWeight: 600 } }, e.category),
-        e.desc ? el("div", { style: { fontSize: 11, color: "#888" } }, e.desc) : null
-      ),
-      el("div", { style: { display: "flex", alignItems: "center", gap: 8 } },
-        el("span", { style: { color: "#f87171", fontWeight: 700 } }, formatEur(e.valor)),
-        el("button", { style: { background: "none", border: "none", cursor: "pointer", fontSize: 14 }, onclick: () => setState({ expModal: true, editExpIndex: idx, expForm: { category: e.category, desc: e.desc || "", valor: e.valor } }) }, "✏️"),
-        el("button", { style: { background: "none", border: "none", cursor: "pointer", fontSize: 14 }, onclick: () => { buf.expenses.splice(idx, 1); setState({}); } }, "🗑️")
+  wrap.append(kmCard);
+
+  // Faturação
+  wrap.append(h("div",{class:"card"},
+    h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#4ade80",fontSize:"14px"}},"💶 Faturação"),
+    h("div",{style:{marginBottom:"10px"}},mkField("Valor Total Faturado (€)","f_fat",b.fat,"0.00")),
+    h("div",{style:{marginBottom:"10px"}},mkField("Recebido em Multibanco (€)","f_mb",b.mb,"0.00")),
+    h("div",{style:{background:"#1a2e1a",borderRadius:"8px",padding:"10px 14px",display:"flex",justifyContent:"space-between"}},
+      h("span",{style:{color:"#aaa",fontSize:"13px"}},"Recebido em Dinheiro"),
+      h("span",{id:"c_din",style:{color:"#4ade80",fontWeight:"700",fontSize:"16px"}},eur(c.din))
+    )
+  ));
+
+  // Combustível & Portagens
+  wrap.append(h("div",{class:"card"},
+    h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#fb923c",fontSize:"14px"}},"⛽ Combustível & Portagens"),
+    h("div",{class:"grid2"},
+      mkField("Combustível (€)","f_comb",b.comb,"0.00"),
+      mkField("Portagens (€)","f_port",b.port,"0.00")
+    )
+  ));
+
+  // Outras Despesas
+  const despCard=h("div",{class:"card"},
+    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}},
+      h("div",{style:{fontWeight:"700",color:"#f87171",fontSize:"14px"}},"🧾 Outras Despesas"),
+      h("button",{style:{background:"#f87171",color:"#fff",border:"none",borderRadius:"8px",padding:"5px 12px",fontSize:"12px",fontWeight:"700",cursor:"pointer"},
+        onclick:()=>{S.expModal=true;S.editExpIdx=null;S.expForm={cat:CATS[0],desc:"",val:""};render();}},"+Adicionar")
+    )
+  );
+  if(!b.exps.length) despCard.append(h("div",{style:{textAlign:"center",color:"#555",fontSize:"13px",padding:"12px 0"}},"Sem despesas extra"));
+  b.exps.forEach((e,i)=>{
+    despCard.append(h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#2a2a2a",borderRadius:"8px",padding:"8px 12px",marginBottom:"6px"}},
+      h("div",{},h("div",{style:{fontSize:"13px",fontWeight:"600"}},e.category),e.desc?h("div",{style:{fontSize:"11px",color:"#888"}},e.desc):null),
+      h("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
+        h("span",{style:{color:"#f87171",fontWeight:"700"}},eur(e.valor)),
+        h("button",{style:{background:"none",border:"none",cursor:"pointer",fontSize:"14px"},onclick:()=>{S.expModal=true;S.editExpIdx=i;S.expForm={cat:e.category,desc:e.desc||"",val:e.valor};render();}},"✏️"),
+        h("button",{style:{background:"none",border:"none",cursor:"pointer",fontSize:"14px"},onclick:()=>{B.exps.splice(i,1);render();}},"🗑️")
       )
     ));
   });
-  if (exps.length) despCard.append(el("div", { style: { background: "#2e1a1a", borderRadius: 8, padding: "8px 12px", display: "flex", justifyContent: "space-between", marginTop: 6 } },
-    el("span", { style: { color: "#aaa", fontSize: 13 } }, "Total Outras Despesas"),
-    el("span", { style: { color: "#f87171", fontWeight: 700 } }, formatEur(c.totalOutrasDespesas))
-  ));
   wrap.append(despCard);
 
-  wrap.append(el("div", { style: { background: "#1e1e1e", borderRadius: 12, padding: 16, marginBottom: 12 } },
-    el("div", { style: { fontWeight: 700, marginBottom: 10, color: "#94a3b8", fontSize: 14 } }, "📝 Observações"),
-    el("input", { placeholder: "Notas sobre o dia (opcional)", value: buf.obs || "", class: "inp", style: { fontSize: 14 }, oninput: e => { buf.obs = e.target.value; }, onblur: e => { buf.obs = e.target.value; } })
+  // Observações
+  wrap.append(h("div",{class:"card"},
+    h("div",{style:{fontWeight:"700",marginBottom:"10px",color:"#94a3b8",fontSize:"14px"}},"📝 Observações"),
+    h("input",{id:"f_obs",class:"inp",placeholder:"Notas sobre o dia (opcional)",value:b.obs||"",style:{fontSize:"14px"}})
   ));
 
-  wrap.append(el("div", { style: { background: "#1e1e1e", borderRadius: 12, padding: 16, marginBottom: 12 } },
-    el("div", { style: { fontWeight: 700, marginBottom: 12, color: "#c084fc", fontSize: 14 } }, "📊 Comissão"),
-    el("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 } }, el("span", { style: { color: "#aaa" } }, `Base (40% de ${formatEur(c.valorFaturado)})`), el("span", {}, formatEur(c.comissaoBase))),
-    el("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 } }, el("span", { style: { color: "#aaa" } }, "IVA (23%)"), el("span", {}, formatEur(c.iva))),
-    el("div", { style: { height: 1, background: "#333", margin: "4px 0" } }),
-    el("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 15, fontWeight: 700 } }, el("span", { style: { color: "#c084fc" } }, "Total Comissão c/ IVA"), el("span", { style: { color: "#c084fc" } }, formatEur(c.comissaoComIva)))
-  ));
-
-  wrap.append(el("div", { style: { background: "linear-gradient(135deg, #1a2e1a, #1e1e1e)", border: "1px solid #4ade8044", borderRadius: 12, padding: 16 } },
-    el("div", { style: { fontWeight: 700, marginBottom: 12, color: "#4ade80", fontSize: 14 } }, "✅ Valor a Entregar"),
-    ...[
-      ["Faturado", formatEur(c.valorFaturado), "#4ade80", "+"],
-      ["Comissão c/ IVA", formatEur(c.comissaoComIva), "#f87171", "−"],
-      ["Combustível", formatEur(c.combustivel), "#f87171", "−"],
-      ["Portagens", formatEur(c.portagens), "#4ade80", "+"],
-      ["Outras Despesas", formatEur(c.totalOutrasDespesas), "#f87171", "−"],
-      ["Multibanco", formatEur(c.multibanco), "#f87171", "−"],
-    ].map(([l, v, col, op]) => el("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, marginBottom: 6 } },
-      el("span", { style: { color: "#aaa" } }, l), el("span", { style: { color: col } }, op + " " + v))),
-    el("div", { style: { background: c.entregar >= 0 ? "#4ade8022" : "#f8717122", borderRadius: 10, padding: "12px 16px", display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 } },
-      el("span", { style: { fontWeight: 700, fontSize: 15 } }, "Entregar"),
-      el("span", { style: { fontWeight: 800, fontSize: 24, color: c.entregar >= 0 ? "#4ade80" : "#f87171" } }, formatEur(c.entregar))
+  // Comissão
+  wrap.append(h("div",{class:"card"},
+    h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#c084fc",fontSize:"14px"}},"📊 Comissão"),
+    h("div",{id:"c_comB",style:{fontSize:"13px",color:"#aaa",marginBottom:"6px"}},"Base (40% de "+eur(c.fat)+"): "+eur(c.comB)),
+    h("div",{id:"c_iva",style:{fontSize:"13px",color:"#aaa",marginBottom:"6px"}},"IVA (23%): "+eur(c.ivaV)),
+    h("div",{style:{height:"1px",background:"#333",margin:"4px 0"}}),
+    h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"15px",fontWeight:"700"}},
+      h("span",{style:{color:"#c084fc"}},"Total Comissão c/ IVA"),
+      h("span",{id:"c_com",style:{color:"#c084fc"}},eur(c.com))
     )
   ));
+
+  // Entregar
+  wrap.append(h("div",{style:{background:"linear-gradient(135deg,#1a2e1a,#1e1e1e)",border:"1px solid #4ade8044",borderRadius:"12px",padding:"16px"}},
+    h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#4ade80",fontSize:"14px"}},"✅ Valor a Entregar"),
+    h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Faturado"),h("span",{id:"c_fat_r",style:{color:"#4ade80"}},"+ "+eur(c.fat))),
+    h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Comissão c/ IVA"),h("span",{id:"c_com_r",style:{color:"#f87171"}},"− "+eur(c.com))),
+    h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Combustível"),h("span",{id:"c_comb_r",style:{color:"#f87171"}},"− "+eur(c.comb))),
+    h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Portagens"),h("span",{id:"c_port_r",style:{color:"#4ade80"}},"+ "+eur(c.port))),
+    h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Outras Despesas"),h("span",{id:"c_outras_r",style:{color:"#f87171"}},"− "+eur(c.outras))),
+    h("div",{class:"row",style:{marginBottom:"10px"}},h("span",{style:{color:"#aaa"}},"Multibanco"),h("span",{id:"c_mb_r",style:{color:"#f87171"}},"− "+eur(c.mb))),
+    h("div",{style:{background:c.entr>=0?"#4ade8022":"#f8717122",borderRadius:"10px",padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+      h("span",{style:{fontWeight:"700",fontSize:"15px"}},"Entregar"),
+      h("span",{id:"c_entr",style:{fontWeight:"800",fontSize:"24px",color:c.entr>=0?"#4ade80":"#f87171"}},eur(c.entr))
+    )
+  ));
+
+  // Adiciona listeners de cálculo em tempo real (sem re-render)
+  setTimeout(()=>{
+    ["f_kmI","f_kmF","f_fat","f_mb","f_port","f_comb"].forEach(id=>{
+      const el=document.getElementById(id);
+      if(el) el.addEventListener("input",()=>{ editBuffer_sync(); updateCalc(); });
+    });
+  },0);
 
   return wrap;
 }
 
-function renderHistorico() {
-  const wrap = el("div", { class: "fadein" });
-  wrap.append(el("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 16, color: "#facc15" } }, "📋 Histórico de Dias"));
-  const dates = Object.keys(state.records).sort((a, b) => b.localeCompare(a));
-  if (!dates.length) { wrap.append(el("div", { style: { textAlign: "center", color: "#555", padding: 40 } }, "Nenhum registo carregado.")); return wrap; }
-  dates.forEach(d => {
-    const c = computeDay(getDay(d));
-    const isToday = d === todayStr();
-    wrap.append(el("div", { style: { background: "#1e1e1e", borderRadius: 12, padding: 14, marginBottom: 10, cursor: "pointer", border: isToday ? "1px solid #facc1566" : "1px solid transparent" },
-      onclick: () => { initBuffer(d); setState({ date: d, tab: 0 }); } },
-      el("div", { style: { display: "flex", justifyContent: "space-between", marginBottom: 8 } },
-        el("div", { style: { fontWeight: 700, fontSize: 14 } }, (isToday ? "🟡 Hoje" : "📅") + " " + d),
-        el("div", { style: { fontWeight: 800, fontSize: 16, color: c.entregar >= 0 ? "#4ade80" : "#f87171" } }, formatEur(c.entregar))
+function editBuffer_sync(){
+  const g=id=>{const e=document.getElementById(id);return e?e.value:"";};
+  B.kmI=g("f_kmI");B.kmF=g("f_kmF");B.fat=g("f_fat");
+  B.mb=g("f_mb");B.port=g("f_port");B.comb=g("f_comb");B.obs=g("f_obs");
+}
+
+function mkField(label,id,value,placeholder){
+  const wrap=document.createElement("div");
+  const sp=document.createElement("span");
+  sp.className="lbl"; sp.textContent=label;
+  const inp=document.createElement("input");
+  inp.type="number"; inp.id=id; inp.className="inp";
+  inp.placeholder=placeholder; inp.value=value||"";
+  wrap.append(sp,inp);
+  return wrap;
+}
+
+function renderHistorico(){
+  const wrap=h("div",{});
+  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"16px",marginBottom:"16px",color:"#facc15"}},"📋 Histórico de Dias"));
+  const dates=Object.keys(S.records).sort((a,b)=>b.localeCompare(a));
+  if(!dates.length){wrap.append(h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Nenhum registo carregado."));return wrap;}
+  dates.forEach(d=>{
+    const c=calc(newBuf(getDay(d)));
+    const isT=d===today();
+    wrap.append(h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"14px",marginBottom:"10px",cursor:"pointer",border:isT?"1px solid #facc1566":"1px solid transparent"},
+      onclick:()=>{syncBufferFromDOM();B=newBuf(getDay(d));S.date=d;S.tab=0;render();}},
+      h("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"8px"}},
+        h("div",{style:{fontWeight:"700",fontSize:"14px"}},(isT?"🟡 Hoje":"📅")+" "+d),
+        h("div",{style:{fontWeight:"800",fontSize:"16px",color:c.entr>=0?"#4ade80":"#f87171"}},eur(c.entr))
       ),
-      el("div", { style: { display: "flex", gap: 12, fontSize: 12, color: "#aaa", flexWrap: "wrap" } },
-        el("span", {}, "🛣️ " + formatKm(c.totalKm)), el("span", {}, "💶 " + formatEur(c.valorFaturado)),
-        el("span", {}, "📊 " + formatEur(c.comissaoComIva)), el("span", {}, "🧾 " + formatEur(c.totalDespesas))
+      h("div",{style:{display:"flex",gap:"12px",fontSize:"12px",color:"#aaa",flexWrap:"wrap"}},
+        h("span",{},"🛣️ "+km(c.tkm)),h("span",{},"💶 "+eur(c.fat)),
+        h("span",{},"📊 "+eur(c.com)),h("span",{},"🧾 "+eur(c.outras))
       )
     ));
   });
   return wrap;
 }
 
-function renderRelatorio() {
-  const wrap = el("div", { class: "fadein" });
-  wrap.append(el("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 16, color: "#facc15" } }, "📈 Relatório Mensal"));
-  wrap.append(el("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 16 } },
-    el("span", { style: { fontSize: 13, color: "#aaa" } }, "Mês:"),
-    el("input", { type: "month", value: state.reportMonth, style: { background: "#222", border: "1px solid #444", color: "#fff", borderRadius: 8, padding: "4px 10px", fontSize: 13 },
-      onchange: async e => { const m = e.target.value; setState({ reportMonth: m }); await loadMonth(m); } }),
-    el("button", { style: { marginLeft: "auto", background: "#333", border: "none", borderRadius: 8, padding: "6px 12px", color: "#aaa", fontSize: 11, cursor: "pointer" },
-      onclick: async () => { state.loadedMonths[state.reportMonth] = false; await loadMonth(state.reportMonth); } }, "🔄")
+function renderRelatorio(){
+  const wrap=h("div",{});
+  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"16px",marginBottom:"16px",color:"#facc15"}},"📈 Relatório Mensal"));
+  wrap.append(h("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"16px"}},
+    h("span",{style:{fontSize:"13px",color:"#aaa"}},"Mês:"),
+    h("input",{type:"month",value:S.month,style:{background:"#222",border:"1px solid #444",color:"#fff",borderRadius:"8px",padding:"4px 10px",fontSize:"13px"},
+      onchange:async e=>{S.month=e.target.value;await loadMonth(S.month);render();}}),
+    h("button",{style:{marginLeft:"auto",background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"11px",cursor:"pointer"},
+      onclick:async()=>{S.loadedMonths[S.month]=false;await loadMonth(S.month);render();}},"🔄")
   ));
-  const mDates = Object.keys(state.records).filter(d => d.startsWith(state.reportMonth));
-  if (!mDates.length) { wrap.append(el("div", { style: { textAlign: "center", color: "#555", padding: 40 } }, "Sem registos. Clica em 🔄 para carregar.")); return wrap; }
-  const stats = mDates.reduce((acc, d) => {
-    const c = computeDay(getDay(d));
-    return { km: acc.km + c.totalKm, faturado: acc.faturado + c.valorFaturado, multibanco: acc.multibanco + c.multibanco, dinheiro: acc.dinheiro + c.dinheiro, despesas: acc.despesas + c.totalDespesas, comissao: acc.comissao + c.comissaoComIva, entregar: acc.entregar + c.entregar, dias: acc.dias + 1 };
-  }, { km: 0, faturado: 0, multibanco: 0, dinheiro: 0, despesas: 0, comissao: 0, entregar: 0, dias: 0 });
-  const grid = el("div", { style: { display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 12 } });
-  [["Dias Trabalhados", stats.dias + " dias", "#facc15"], ["KM Totais", formatKm(stats.km), "#facc15"],
-   ["Total Faturado", formatEur(stats.faturado), "#4ade80"], ["Multibanco", formatEur(stats.multibanco), "#60a5fa"],
-   ["Dinheiro", formatEur(stats.dinheiro), "#60a5fa"], ["Total Despesas", formatEur(stats.despesas), "#f87171"],
-   ["Total Comissões", formatEur(stats.comissao), "#c084fc"]].forEach(([l, v, c]) => {
-    grid.append(el("div", { style: { background: "#1e1e1e", borderRadius: 10, padding: "12px 14px" } },
-      el("div", { style: { fontSize: 11, color: "#666", marginBottom: 4 } }, l),
-      el("div", { style: { fontWeight: 700, fontSize: 16, color: c } }, v)
-    ));
-  });
+  const mD=Object.keys(S.records).filter(d=>d.startsWith(S.month));
+  if(!mD.length){wrap.append(h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Sem registos. Clica em 🔄"));return wrap;}
+  const st=mD.reduce((a,d)=>{const c=calc(newBuf(getDay(d)));return{km:a.km+c.tkm,fat:a.fat+c.fat,mb:a.mb+c.mb,din:a.din+c.din,desp:a.desp+c.outras+c.comb+c.port,com:a.com+c.com,entr:a.entr+c.entr,dias:a.dias+1};},{km:0,fat:0,mb:0,din:0,desp:0,com:0,entr:0,dias:0});
+  const grid=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"12px"}});
+  [["Dias",st.dias+" dias","#facc15"],["KM",km(st.km),"#facc15"],["Faturado",eur(st.fat),"#4ade80"],["Multibanco",eur(st.mb),"#60a5fa"],["Dinheiro",eur(st.din),"#60a5fa"],["Despesas",eur(st.desp),"#f87171"],["Comissões",eur(st.com),"#c084fc"]].forEach(([l,v,c])=>
+    grid.append(h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"12px 14px"}},h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},l),h("div",{style:{fontWeight:"700",fontSize:"16px",color:c}},v)))
+  );
   wrap.append(grid);
-  wrap.append(el("div", { style: { background: "linear-gradient(135deg,#1a2e1a,#1e1e1e)", border: "1px solid #4ade8044", borderRadius: 12, padding: 16 } },
-    el("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
-      el("div", {}, el("div", { style: { fontSize: 12, color: "#aaa", marginBottom: 4 } }, "💰 Entregar do Mês"), el("div", { style: { fontSize: 11, color: "#555" } }, "Média: " + formatEur(stats.entregar / stats.dias) + " / dia")),
-      el("div", { style: { fontWeight: 800, fontSize: 28, color: stats.entregar >= 0 ? "#4ade80" : "#f87171" } }, formatEur(stats.entregar))
+  wrap.append(h("div",{style:{background:"linear-gradient(135deg,#1a2e1a,#1e1e1e)",border:"1px solid #4ade8044",borderRadius:"12px",padding:"16px"}},
+    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+      h("div",{},h("div",{style:{fontSize:"12px",color:"#aaa",marginBottom:"4px"}},"💰 Entregar do Mês"),h("div",{style:{fontSize:"11px",color:"#555"}},"Média: "+eur(st.entr/st.dias)+" / dia")),
+      h("div",{style:{fontWeight:"800",fontSize:"28px",color:st.entr>=0?"#4ade80":"#f87171"}},eur(st.entr))
     )
   ));
   return wrap;
 }
 
-function renderResumo() {
-  const wrap = el("div", { class: "fadein" });
-  wrap.append(el("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 4, color: "#facc15" } }, "📊 Resumo Mensal"));
-  wrap.append(el("div", { style: { fontSize: 12, color: "#666", marginBottom: 16 } }, "Indicadores de performance"));
-  wrap.append(el("div", { style: { display: "flex", alignItems: "center", gap: 8, marginBottom: 20 } },
-    el("span", { style: { fontSize: 13, color: "#aaa" } }, "Mês:"),
-    el("input", { type: "month", value: state.reportMonth, style: { background: "#222", border: "1px solid #444", color: "#fff", borderRadius: 8, padding: "4px 10px", fontSize: 13 },
-      onchange: async e => { const m = e.target.value; setState({ reportMonth: m }); await loadMonth(m); } })
+function renderResumo(){
+  const wrap=h("div",{});
+  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"16px",marginBottom:"4px",color:"#facc15"}},"📊 Resumo Mensal"));
+  wrap.append(h("div",{style:{fontSize:"12px",color:"#666",marginBottom:"16px"}},"Indicadores de performance"));
+  wrap.append(h("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"20px"}},
+    h("span",{style:{fontSize:"13px",color:"#aaa"}},"Mês:"),
+    h("input",{type:"month",value:S.month,style:{background:"#222",border:"1px solid #444",color:"#fff",borderRadius:"8px",padding:"4px 10px",fontSize:"13px"},
+      onchange:async e=>{S.month=e.target.value;await loadMonth(S.month);render();}})
   ));
-  const mDates = Object.keys(state.records).filter(d => d.startsWith(state.reportMonth));
-  if (!mDates.length) { wrap.append(el("div", { style: { textAlign: "center", color: "#555", padding: 40 } }, "Sem registos para este mês.")); return wrap; }
-  const dayStats = mDates.map(d => computeDay(getDay(d)));
-  const totKm = dayStats.reduce((s, d) => s + d.totalKm, 0);
-  const totVf = dayStats.reduce((s, d) => s + d.valorFaturado, 0);
-  const totMb = dayStats.reduce((s, d) => s + d.multibanco, 0);
-  const totComb = dayStats.reduce((s, d) => s + d.combustivel, 0);
-  const totPort = dayStats.reduce((s, d) => s + d.portagens, 0);
-  const totIva = dayStats.reduce((s, d) => s + d.iva, 0);
-  const totComBase = dayStats.reduce((s, d) => s + d.comissaoBase, 0);
-  const totComTotal = dayStats.reduce((s, d) => s + d.comissaoComIva, 0);
-  const dias = dayStats.length;
-  const catTotals = {};
-  let totDeposito = 0;
-  mDates.forEach(d => {
-    (getDay(d).expenses || []).forEach(e => {
-      const cat = e.category || "Outros";
-      if (cat === "Depósito") totDeposito += (parseFloat(e.valor) || 0);
-      else catTotals[cat] = (catTotals[cat] || 0) + (parseFloat(e.valor) || 0);
-    });
-  });
-  const totOutrasRes = Object.values(catTotals).reduce((s, v) => s + v, 0);
-  const totEntregarReal = totVf - totComTotal - totComb + totPort - totOutrasRes - totDeposito - totMb;
+  const mD=Object.keys(S.records).filter(d=>d.startsWith(S.month));
+  if(!mD.length){wrap.append(h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Sem registos."));return wrap;}
+  const ds=mD.map(d=>calc(newBuf(getDay(d))));
+  const tKm=ds.reduce((s,d)=>s+d.tkm,0),tV=ds.reduce((s,d)=>s+d.fat,0),tMb=ds.reduce((s,d)=>s+d.mb,0);
+  const tC=ds.reduce((s,d)=>s+d.comb,0),tP=ds.reduce((s,d)=>s+d.port,0);
+  const tIva=ds.reduce((s,d)=>s+d.ivaV,0),tComB=ds.reduce((s,d)=>s+d.comB,0),tCom=ds.reduce((s,d)=>s+d.com,0);
+  const dias=ds.length;
+  const cats={};let tDep=0;
+  mD.forEach(d=>(getDay(d).expenses||[]).forEach(e=>{
+    if(e.category==="Depósito") tDep+=(parseFloat(e.valor)||0);
+    else cats[e.category]=(cats[e.category]||0)+(parseFloat(e.valor)||0);
+  }));
+  const tOut=Object.values(cats).reduce((s,v)=>s+v,0);
+  const tEntr=tV-tCom-tC+tP-tOut-tDep-tMb;
 
-  function kpi(icon, title, value, sub, color) {
-    return el("div", { style: { background: "#1e1e1e", borderRadius: 12, padding: 16, marginBottom: 10, border: `1px solid ${color}33` } },
-      el("div", { style: { fontSize: 11, color: "#777", marginBottom: 6 } }, icon + " " + title),
-      el("div", { style: { fontWeight: 800, fontSize: 22, color } }, value),
-      sub ? el("div", { style: { fontSize: 11, color: "#666", marginTop: 4 } }, sub) : null
+  function kpi(icon,title,value,sub,color){
+    return h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"10px",border:`1px solid ${color}33`}},
+      h("div",{style:{fontSize:"11px",color:"#777",marginBottom:"6px"}},icon+" "+title),
+      h("div",{style:{fontWeight:"800",fontSize:"22px",color}},value),
+      sub?h("div",{style:{fontSize:"11px",color:"#666",marginTop:"4px"}},sub):null
     );
   }
 
-  wrap.append(el("div", { style: { fontSize: 11, color: "#facc15", fontWeight: 700, letterSpacing: 1, marginBottom: 8, textTransform: "uppercase" } }, "📍 Quilómetros"));
-  wrap.append(kpi("🛣️", "Média de KM por Dia", (totKm / dias).toFixed(1) + " km", `Total: ${totKm.toFixed(0)} km em ${dias} dias`, "#facc15"));
-  wrap.append(kpi("💶", "Faturado por KM — Dia", "€" + (dayStats.reduce((s, d) => s + (d.totalKm > 0 ? d.valorFaturado / d.totalKm : 0), 0) / dias).toFixed(3) + "/km", "Média KM diário", "#60a5fa"));
-  wrap.append(kpi("📈", "Faturado por KM — Acumulado", "€" + (totKm > 0 ? totVf / totKm : 0).toFixed(3) + "/km", "Média KM Mensal", "#60a5fa"));
-  wrap.append(el("div", { style: { fontSize: 11, color: "#f87171", fontWeight: 700, letterSpacing: 1, margin: "16px 0 8px", textTransform: "uppercase" } }, "⛽ Combustível"));
-  wrap.append(kpi("⛽", "Custo de Combustível por 100 km", formatEur(totKm > 0 ? (totComb / totKm) * 100 : 0) + "/100km", `${formatEur(totComb)} gastos · ${totKm.toFixed(0)} km`, "#f87171"));
-  wrap.append(el("div", { style: { fontSize: 11, color: "#c084fc", fontWeight: 700, letterSpacing: 1, margin: "16px 0 8px", textTransform: "uppercase" } }, "📊 Comissão"));
-  wrap.append(kpi("🧾", "Total IVA da Comissão", formatEur(totIva), `Base: ${formatEur(totComBase)} · IVA: ${formatEur(totIva)}`, "#c084fc"));
-  wrap.append(el("div", { style: { fontSize: 11, color: "#4ade80", fontWeight: 700, letterSpacing: 1, margin: "16px 0 8px", textTransform: "uppercase" } }, "💰 Valor a Entregar"));
+  wrap.append(h("div",{style:{fontSize:"11px",color:"#facc15",fontWeight:"700",letterSpacing:"1px",marginBottom:"8px",textTransform:"uppercase"}},"📍 Quilómetros"));
+  wrap.append(kpi("🛣️","Média de KM por Dia",(tKm/dias).toFixed(1)+" km",`Total: ${tKm.toFixed(0)} km em ${dias} dias`,"#facc15"));
+  wrap.append(kpi("💶","Faturado/KM — Dia","€"+(ds.reduce((s,d)=>s+(d.tkm>0?d.fat/d.tkm:0),0)/dias).toFixed(3)+"/km","Média KM diário","#60a5fa"));
+  wrap.append(kpi("📈","Faturado/KM — Acumulado","€"+(tKm>0?tV/tKm:0).toFixed(3)+"/km","Média KM Mensal","#60a5fa"));
+  wrap.append(h("div",{style:{fontSize:"11px",color:"#f87171",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"⛽ Combustível"));
+  wrap.append(kpi("⛽","Custo por 100 km",eur(tKm>0?(tC/tKm)*100:0)+"/100km",`${eur(tC)} gastos · ${tKm.toFixed(0)} km`,"#f87171"));
+  wrap.append(h("div",{style:{fontSize:"11px",color:"#c084fc",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"📊 Comissão"));
+  wrap.append(kpi("🧾","Total IVA da Comissão",eur(tIva),`Base: ${eur(tComB)} · IVA: ${eur(tIva)}`,"#c084fc"));
+  wrap.append(h("div",{style:{fontSize:"11px",color:"#4ade80",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"💰 Valor a Entregar"));
 
-  const devCard = el("div", { style: { background: totEntregarReal >= 0 ? "#1a2e1a" : "#2e1a1a", border: `1px solid ${totEntregarReal >= 0 ? "#4ade80" : "#f87171"}55`, borderRadius: 14, padding: 18, marginBottom: 10 } });
-  const lines = el("div", { style: { display: "flex", flexDirection: "column", gap: 6, marginBottom: 14 } });
-  lines.append(el("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13 } }, el("span", { style: { color: "#888" } }, "💶 Total Faturado"), el("span", { style: { color: "#4ade80", fontWeight: 600 } }, "+ " + formatEur(totVf))));
-  lines.append(el("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13 } }, el("span", { style: { color: "#888" } }, "📊 Comissão c/ IVA"), el("span", { style: { color: "#c084fc", fontWeight: 600 } }, "− " + formatEur(totComTotal))));
-  lines.append(el("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13 } }, el("span", { style: { color: "#888" } }, "⛽ Combustível"), el("span", { style: { color: "#f87171", fontWeight: 600 } }, "− " + formatEur(totComb))));
-  lines.append(el("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13 } }, el("span", { style: { color: "#888" } }, "💳 Multibanco"), el("span", { style: { color: "#60a5fa", fontWeight: 600 } }, "− " + formatEur(totMb))));
-  if (totDeposito > 0) lines.append(el("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13 } }, el("span", { style: { color: "#888" } }, "🏦 Depósito Bancário"), el("span", { style: { color: "#60a5fa", fontWeight: 600 } }, "− " + formatEur(totDeposito))));
-  const catEntries = Object.entries(catTotals).sort((a, b) => b[1] - a[1]);
-  if (catEntries.length > 0) {
-    lines.append(el("div", { style: { fontSize: 11, color: "#666", margin: "6px 0 2px", fontWeight: 600, textTransform: "uppercase" } }, "🧾 Outras Despesas"));
-    catEntries.forEach(([cat, val]) => lines.append(el("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, paddingLeft: 12 } }, el("span", { style: { color: "#888" } }, "· " + cat), el("span", { style: { color: "#f87171", fontWeight: 600 } }, "− " + formatEur(val)))));
-    if (catEntries.length > 1) lines.append(el("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 12, paddingLeft: 12, marginTop: 2 } }, el("span", { style: { color: "#666" } }, "Total outras despesas"), el("span", { style: { color: "#f87171" } }, "− " + formatEur(totOutrasRes))));
+  const card=h("div",{style:{background:tEntr>=0?"#1a2e1a":"#2e1a1a",border:`1px solid ${tEntr>=0?"#4ade80":"#f87171"}55`,borderRadius:"14px",padding:"18px",marginBottom:"10px"}});
+  const lines=h("div",{style:{display:"flex",flexDirection:"column",gap:"6px",marginBottom:"14px"}});
+  const lr=(l,v,c,op)=>h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px"}},h("span",{style:{color:"#888"}},l),h("span",{style:{color:c,fontWeight:"600"}},op+" "+v));
+  lines.append(lr("💶 Total Faturado",eur(tV),"#4ade80","+"));
+  lines.append(lr("📊 Comissão c/ IVA",eur(tCom),"#c084fc","−"));
+  lines.append(lr("⛽ Combustível",eur(tC),"#f87171","−"));
+  lines.append(lr("💳 Multibanco",eur(tMb),"#60a5fa","−"));
+  if(tDep>0) lines.append(lr("🏦 Depósito Bancário",eur(tDep),"#60a5fa","−"));
+  const ce=Object.entries(cats).sort((a,b)=>b[1]-a[1]);
+  if(ce.length){
+    lines.append(h("div",{style:{fontSize:"11px",color:"#666",margin:"6px 0 2px",fontWeight:"600",textTransform:"uppercase"}},"🧾 Outras Despesas"));
+    ce.forEach(([cat,val])=>lines.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",paddingLeft:"12px"}},h("span",{style:{color:"#888"}},"· "+cat),h("span",{style:{color:"#f87171",fontWeight:"600"}},"− "+eur(val)))));
+    if(ce.length>1) lines.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"12px",paddingLeft:"12px",marginTop:"2px"}},h("span",{style:{color:"#666"}},"Total outras"),h("span",{style:{color:"#f87171"}},"− "+eur(tOut))));
   }
-  if (totPort > 0) lines.append(el("div", { style: { display: "flex", justifyContent: "space-between", fontSize: 13, marginTop: 4 } }, el("span", { style: { color: "#888" } }, "🛣️ Portagens (cliente)"), el("span", { style: { color: "#4ade80", fontWeight: 600 } }, "+ " + formatEur(totPort))));
-  devCard.append(lines);
-  devCard.append(el("div", { style: { height: 1, background: "#333", marginBottom: 14 } }));
-  devCard.append(el("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center" } },
-    el("span", { style: { fontWeight: 700, fontSize: 14 } }, "Total a Entregar"),
-    el("span", { style: { fontWeight: 800, fontSize: 28, color: totEntregarReal >= 0 ? "#4ade80" : "#f87171" } }, formatEur(totEntregarReal))
+  if(tP>0) lines.append(lr("🛣️ Portagens (cliente)",eur(tP),"#4ade80","+"));
+  card.append(lines);
+  card.append(h("div",{style:{height:"1px",background:"#333",marginBottom:"14px"}}));
+  card.append(h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
+    h("span",{style:{fontWeight:"700",fontSize:"14px"}},"Total a Entregar"),
+    h("span",{style:{fontWeight:"800",fontSize:"28px",color:tEntr>=0?"#4ade80":"#f87171"}},eur(tEntr))
   ));
-  wrap.append(devCard);
+  wrap.append(card);
   return wrap;
 }
 
-function renderBottomNav() {
-  const nav = el("div", { style: { position: "fixed", bottom: 0, left: "50%", transform: "translateX(-50%)", width: "100%", maxWidth: 420, background: "#1a1a1a", borderTop: "1px solid #333", padding: "10px 16px" } });
-  if (state.tab === 0) {
-    nav.append(el("button", {
-      style: { width: "100%", padding: "13px", background: state.saveSuccess ? "#16a34a" : "#facc15", border: "none", borderRadius: 12, color: "#111", fontWeight: 800, fontSize: 15, cursor: "pointer", transition: "background 0.3s" },
-      onclick: saveDay
-    }, state.saveSuccess ? "✅ Guardado!" : "💾 Gravar Dia"));
+function renderNav(){
+  const nav=h("div",{style:{position:"fixed",bottom:"0",left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"420px",background:"#1a1a1a",borderTop:"1px solid #333",padding:"10px 16px"}});
+  if(S.tab===0){
+    nav.append(h("button",{id:"btn_save",
+      style:{width:"100%",padding:"13px",background:S.saved?"#16a34a":"#facc15",border:"none",borderRadius:"12px",color:"#111",fontWeight:"800",fontSize:"15px",cursor:"pointer",transition:"background 0.3s"},
+      onclick:saveDay},S.saved?"✅ Guardado!":"💾 Gravar Dia"));
   } else {
-    nav.append(el("div", { style: { height: 44 } }));
+    nav.append(h("div",{style:{height:"44px"}}));
   }
   return nav;
 }
 
-function renderDeleteModal() {
-  if (!state.deleteModal) return null;
-  return el("div", { style: { position: "fixed", inset: 0, background: "#000b", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 24 }, onclick: e => { if (e.target === e.currentTarget) setState({ deleteModal: false }); } },
-    el("div", { style: { background: "#1e1e1e", borderRadius: 16, padding: 24, width: "100%", maxWidth: 360 } },
-      el("div", { style: { fontSize: 36, textAlign: "center", marginBottom: 12 } }, "🗑️"),
-      el("div", { style: { fontWeight: 700, fontSize: 17, textAlign: "center", marginBottom: 8 } }, "Apagar Registo"),
-      el("div", { style: { fontSize: 13, color: "#aaa", textAlign: "center", marginBottom: 24 } }, `Apagar o registo de ${state.date}? Esta ação não pode ser desfeita.`),
-      el("div", { style: { display: "flex", gap: 10 } },
-        el("button", { style: { flex: 1, padding: 12, background: "#333", border: "none", borderRadius: 10, color: "#aaa", fontWeight: 700, cursor: "pointer" }, onclick: () => setState({ deleteModal: false }) }, "Cancelar"),
-        el("button", { style: { flex: 1, padding: 12, background: "#dc2626", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, cursor: "pointer" }, onclick: deleteDay }, "Apagar")
+function renderDeleteModal(){
+  return h("div",{style:{position:"fixed",inset:"0",background:"#000b",display:"flex",alignItems:"center",justifyContent:"center",zIndex:"100",padding:"24px"},
+    onclick:e=>{if(e.target===e.currentTarget){S.deleteModal=false;render();}}},
+    h("div",{style:{background:"#1e1e1e",borderRadius:"16px",padding:"24px",width:"100%",maxWidth:"360px"}},
+      h("div",{style:{fontSize:"36px",textAlign:"center",marginBottom:"12px"}},"🗑️"),
+      h("div",{style:{fontWeight:"700",fontSize:"17px",textAlign:"center",marginBottom:"8px"}},"Apagar Registo"),
+      h("div",{style:{fontSize:"13px",color:"#aaa",textAlign:"center",marginBottom:"24px"}},`Apagar o registo de ${S.date}? Não pode ser desfeito.`),
+      h("div",{style:{display:"flex",gap:"10px"}},
+        h("button",{style:{flex:"1",padding:"12px",background:"#333",border:"none",borderRadius:"10px",color:"#aaa",fontWeight:"700",cursor:"pointer"},onclick:()=>{S.deleteModal=false;render();}},"Cancelar"),
+        h("button",{style:{flex:"1",padding:"12px",background:"#dc2626",border:"none",borderRadius:"10px",color:"#fff",fontWeight:"700",cursor:"pointer"},onclick:deleteDay},"Apagar")
       )
     )
   );
 }
 
-function renderExpModal() {
-  if (!state.expModal) return null;
-  return el("div", { style: { position: "fixed", inset: 0, background: "#000a", display: "flex", alignItems: "flex-end", zIndex: 100 }, onclick: e => { if (e.target === e.currentTarget) setState({ expModal: false }); } },
-    el("div", { style: { background: "#1e1e1e", borderRadius: "20px 20px 0 0", padding: 24, width: "100%", maxWidth: 420, margin: "0 auto" } },
-      el("div", { style: { fontWeight: 700, fontSize: 16, marginBottom: 16, color: "#f87171" } }, state.editExpIndex !== null ? "✏️ Editar Despesa" : "➕ Nova Despesa"),
-      el("div", { style: { marginBottom: 12 } },
-        el("span", { style: { fontSize: 11, color: "#888", display: "block", marginBottom: 6 } }, "Tipo"),
-        el("div", { style: { display: "flex", flexWrap: "wrap", gap: 6 } }, EXPENSE_CATEGORIES.map(c =>
-          el("button", { style: { padding: "6px 12px", borderRadius: 8, border: "none", cursor: "pointer", fontSize: 12, fontWeight: 600, background: state.expForm.category === c ? "#f87171" : "#2a2a2a", color: state.expForm.category === c ? "#fff" : "#aaa" },
-            onclick: () => { state.expForm.category = c; render(); } }, c)
-        ))
+function renderExpModal(){
+  return h("div",{style:{position:"fixed",inset:"0",background:"#000a",display:"flex",alignItems:"flex-end",zIndex:"100"},
+    onclick:e=>{if(e.target===e.currentTarget){S.expModal=false;render();}}},
+    h("div",{style:{background:"#1e1e1e",borderRadius:"20px 20px 0 0",padding:"24px",width:"100%",maxWidth:"420px",margin:"0 auto"}},
+      h("div",{style:{fontWeight:"700",fontSize:"16px",marginBottom:"16px",color:"#f87171"}},S.editExpIdx!==null?"✏️ Editar Despesa":"➕ Nova Despesa"),
+      h("div",{style:{marginBottom:"12px"}},
+        h("span",{style:{fontSize:"11px",color:"#888",display:"block",marginBottom:"6px"}},"Tipo"),
+        h("div",{style:{display:"flex",flexWrap:"wrap",gap:"6px"}},...CATS.map(c=>h("button",{
+          style:{padding:"6px 12px",borderRadius:"8px",border:"none",cursor:"pointer",fontSize:"12px",fontWeight:"600",
+            background:S.expForm.cat===c?"#f87171":"#2a2a2a",color:S.expForm.cat===c?"#fff":"#aaa"},
+          onclick:()=>{S.expForm.cat=c;render();}},c)))
       ),
-      el("div", { style: { marginBottom: 12 } },
-        el("span", { style: { fontSize: 11, color: "#888", display: "block", marginBottom: 6 } }, "Descrição (opcional)"),
-        el("input", { value: state.expForm.desc, placeholder: "Ex: Oficina XPTO", class: "inp", style: { fontSize: 14 }, oninput: e => { state.expForm.desc = e.target.value; } })
+      h("div",{style:{marginBottom:"12px"}},
+        h("span",{style:{fontSize:"11px",color:"#888",display:"block",marginBottom:"6px"}},"Descrição (opcional)"),
+        h("input",{class:"inp",placeholder:"Ex: Oficina XPTO",value:S.expForm.desc,style:{fontSize:"14px"},oninput:e=>{S.expForm.desc=e.target.value;}})
       ),
-      el("div", { style: { marginBottom: 20 } },
-        el("span", { style: { fontSize: 11, color: "#888", display: "block", marginBottom: 6 } }, "Valor (€)"),
-        el("input", { type: "number", value: state.expForm.valor, placeholder: "0.00", class: "inp", style: { fontSize: 20, fontWeight: 700 }, oninput: e => { state.expForm.valor = e.target.value; } })
+      h("div",{style:{marginBottom:"20px"}},
+        h("span",{style:{fontSize:"11px",color:"#888",display:"block",marginBottom:"6px"}},"Valor (€)"),
+        h("input",{type:"number",class:"inp",placeholder:"0.00",value:S.expForm.val,style:{fontSize:"20px",fontWeight:"700"},oninput:e=>{S.expForm.val=e.target.value;}})
       ),
-      el("div", { style: { display: "flex", gap: 10 } },
-        el("button", { style: { flex: 1, padding: 12, background: "#333", border: "none", borderRadius: 10, color: "#aaa", fontWeight: 700, cursor: "pointer" }, onclick: () => setState({ expModal: false }) }, "Cancelar"),
-        el("button", { style: { flex: 2, padding: 12, background: "#f87171", border: "none", borderRadius: 10, color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 15 },
-          onclick: () => {
-            if (!state.expForm.valor) return;
-            if (state.editExpIndex !== null) editBuffer.expenses[state.editExpIndex] = { ...state.expForm };
-            else editBuffer.expenses.push({ ...state.expForm });
-            setState({ expModal: false, expForm: { category: EXPENSE_CATEGORIES[0], desc: "", valor: "" }, editExpIndex: null });
-          }
-        }, state.editExpIndex !== null ? "Guardar" : "Adicionar")
+      h("div",{style:{display:"flex",gap:"10px"}},
+        h("button",{style:{flex:"1",padding:"12px",background:"#333",border:"none",borderRadius:"10px",color:"#aaa",fontWeight:"700",cursor:"pointer"},onclick:()=>{S.expModal=false;render();}},"Cancelar"),
+        h("button",{style:{flex:"2",padding:"12px",background:"#f87171",border:"none",borderRadius:"10px",color:"#fff",fontWeight:"700",cursor:"pointer",fontSize:"15px"},
+          onclick:()=>{
+            if(!S.expForm.val) return;
+            const exp={category:S.expForm.cat,desc:S.expForm.desc,valor:S.expForm.val};
+            if(S.editExpIdx!==null) B.exps[S.editExpIdx]=exp;
+            else B.exps.push(exp);
+            S.expModal=false;
+            render();
+          }},S.editExpIdx!==null?"Guardar":"Adicionar")
       )
     )
   );
 }
 
-function render() {
-  const root = document.getElementById("app");
-  root.innerHTML = "";
-  if (!state.configured) { root.append(renderSetup()); return; }
-  root.append(renderHeader());
-  if (state.syncError) root.append(el("div", { style: { margin: "10px 16px 0", background: "#2e1a1a", border: "1px solid #f8717155", borderRadius: 10, padding: "8px 12px", fontSize: 11, color: "#f87171" } }, "⚠️ " + state.syncError));
-  if (state.loading) {
-    root.append(el("div", { style: { textAlign: "center", padding: 60, color: "#888" } }, "A carregar dados..."));
-  } else {
-    const content = el("div", { style: { padding: 16 } });
-    if (state.tab === 0) content.append(renderHoje());
-    else if (state.tab === 1) content.append(renderHistorico());
-    else if (state.tab === 2) content.append(renderRelatorio());
-    else content.append(renderResumo());
-    root.append(content);
-  }
-  root.append(renderBottomNav());
-  const dm = renderDeleteModal(); if (dm) root.append(dm);
-  const em = renderExpModal(); if (em) root.append(em);
-}
-
+// Inicializa
 render();
 </script>
 </body>
