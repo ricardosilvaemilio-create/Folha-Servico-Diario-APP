@@ -64,7 +64,16 @@ function el(tag, attrs, ...children) {
   return e;
 }
 
-function setState(patch) { Object.assign(state, patch); render(); }
+function setState(patch) {
+  Object.assign(state, patch);
+  // Não faz re-render se estamos no tab Hoje e a única mudança é no buffer
+  render();
+}
+
+// Atualiza o buffer SEM re-render
+function updateBuffer(key, value) {
+  editBuffer[key] = value;
+}
 function getDay(d) {
   return state.records[d] || { kmInicial: "", kmFinal: "", valorFaturado: "", multibanco: "", portagens: "", combustivel: "", obs: "", expenses: [] };
 }
