@@ -247,9 +247,16 @@ function renderHoje(){
         await loadMonth(S.date.slice(0,7));
         B=newBuf(getDay(S.date));
         render();
-      }})
+      }}),
+    h("button",{style:{marginLeft:"auto",background:"#333",border:"none",borderRadius:"8px",padding:"5px 10px",color:"#aaa",fontSize:"13px",cursor:"pointer"},
+      onclick:async()=>{
+        S.loadedMonths[S.date.slice(0,7)]=false;
+        await loadMonth(S.date.slice(0,7));
+        B=newBuf(getDay(S.date));
+        render();
+      }},"🔄")
   );
-  if(S.records[d]) dateRow.append(h("button",{style:{marginLeft:"auto",background:"#7f1d1d",border:"none",borderRadius:"8px",padding:"5px 12px",color:"#fca5a5",fontSize:"12px",fontWeight:"700",cursor:"pointer"},onclick:()=>{S.deleteModal=true;render();}},"🗑️ Apagar Dia"));
+  if(S.records[d]) dateRow.append(h("button",{style:{background:"#7f1d1d",border:"none",borderRadius:"8px",padding:"5px 12px",color:"#fca5a5",fontSize:"12px",fontWeight:"700",cursor:"pointer"},onclick:()=>{S.deleteModal=true;render();}},"🗑️"));
   wrap.append(dateRow);
 
   // KM
@@ -370,7 +377,15 @@ function mkField(label,id,value,placeholder){
 
 function renderHistorico(){
   const wrap=h("div",{});
-  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"16px",marginBottom:"16px",color:"#facc15"}},"📋 Histórico de Dias"));
+  wrap.append(h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}},
+    h("div",{style:{fontWeight:"700",fontSize:"16px",color:"#facc15"}},"📋 Histórico de Dias"),
+    h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"11px",cursor:"pointer"},
+      onclick:async()=>{
+        S.loadedMonths[S.date.slice(0,7)]=false;
+        await loadMonth(S.date.slice(0,7));
+        render();
+      }},"🔄 Sincronizar")
+  ));
   const dates=Object.keys(S.records).sort((a,b)=>b.localeCompare(a));
   if(!dates.length){wrap.append(h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Nenhum registo carregado."));return wrap;}
   dates.forEach(d=>{
