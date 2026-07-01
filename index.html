@@ -548,10 +548,13 @@ function renderExpModal(){
   );
 }
 
-// Inicializa — carrega URL guardado se existir
-const savedUrl = localStorage.getItem("taxi_backend_url");
-if(savedUrl){ S.url=savedUrl; S.ok=true; loadMonth(S.date.slice(0,7)).then(()=>{ B=newBuf(getDay(S.date)); render(); }); }
-else render();
+// URL do backend fixo no código — não pede ao utilizador
+const BACKEND_URL = "https://script.google.com/macros/s/AKfycbx8p2umyI3grszfevvtlBoTNaWv-CTNbPbGaOuf2OILkkg4i7Ug0-zXFjMesQtEjaWcyA/exec";
+
+// Inicializa diretamente sem ecrã de login
+S.url = BACKEND_URL;
+S.ok = true;
+loadMonth(S.date.slice(0,7)).then(()=>{ B=newBuf(getDay(S.date)); render(); });
 </script>
 </body>
 </html>
