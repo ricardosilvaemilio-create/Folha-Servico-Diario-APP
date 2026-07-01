@@ -548,8 +548,10 @@ function renderExpModal(){
   );
 }
 
-// Inicializa
-render();
+// Inicializa — carrega URL guardado se existir
+const savedUrl = localStorage.getItem("taxi_backend_url");
+if(savedUrl){ S.url=savedUrl; S.ok=true; loadMonth(S.date.slice(0,7)).then(()=>{ B=newBuf(getDay(S.date)); render(); }); }
+else render();
 </script>
 </body>
 </html>
