@@ -147,11 +147,8 @@ function updateDayLocal(date, patch) {
   setState({ records: updated });
 }
 
-let saveTimeout = null;
 function updateDayDebounced(date, patch) {
   updateDayLocal(date, patch);
-  clearTimeout(saveTimeout);
-  saveTimeout = setTimeout(() => saveDayToSheet(date, getDay(date)), 700);
 }
 
 async function confirmDeleteDay() {
@@ -200,7 +197,7 @@ function computeDay(day) {
   const comissaoBase = valorFaturado * COMMISSION_RATE;
   const iva = comissaoBase * IVA_RATE;
   const comissaoComIva = comissaoBase + iva;
-  const entregar = valorFaturado - comissaoComIva - combustivel - portagens - totalOutrasDespesas - multibanco;
+  const entregar = valorFaturado - comissaoComIva - combustivel + portagens - totalOutrasDespesas - multibanco;
   return { totalKm, valorFaturado, multibanco, portagens, combustivel, dinheiro, totalOutrasDespesas, totalDespesas, comissaoBase, iva, comissaoComIva, entregar };
 }
 
@@ -330,7 +327,7 @@ function renderHoje() {
     )
   ));
 
-  // Combustível + Portagens card (campos fixos, como na sheet)
+  // Combustível + Portagens card
   wrap.append(el("div", { style:{ background:"#1e1e1e", borderRadius:12, padding:16, marginBottom:12 } },
     el("div", { style:{ fontWeight:700, marginBottom:12, color:"#fb923c", fontSize:14 } }, "⛽ Combustível & Portagens"),
     el("div", { style:{ display:"grid", gridTemplateColumns:"1fr 1fr", gap:10 } },
@@ -542,21 +539,82 @@ function renderResumo() {
   wrap.append(el("div", { style:{ fontSize:11, color:"#c084fc", fontWeight:700, letterSpacing:1, margin:"16px 0 8px", textTransform:"uppercase" } }, "📊 Comissão"));
   wrap.append(kpi("🧾", "Total IVA da Comissão do Motorista", formatEur(totIva), `Base: ${formatEur(totComBase)} · IVA (23%): ${formatEur(totIva)}`, "#c084fc"));
 
-  wrap.append(el("div", { style:{ fontSize:11, color:"#4ade80", fontWeight:700, letterSpacing:1, margin:"16px 0 8px", textTransform:"uppercase" } }, "💰 Valor a Entregar"));
-  const devCard = el("div", { style:{ background: totEntregar>=0?"#1a2e1a":"#2e1a1a", border:`1px solid ${totEntregar>=0?"#4ade80":"#f87171"}55`, borderRadius:14, padding:18, marginBottom:10 } },
-    el("div", { style:{ fontSize:11, color:"#777", marginBottom:12 } }, "Faturado − Comissão Total − Despesas − Multibanco")
-  );
-  const lines = el("div", { style:{ display:"flex", flexDirection:"column", gap:6, marginBottom:14 } });
-  [["💶 Total Faturado", formatEur(totVf), "#4ade80", "+"], ["📊 Comissão c/ IVA", formatEur(totComTotal), "#c084fc", "−"],
-   ["🧾 Total Despesas", formatEur(totDesp), "#f87171", "−"], ["💳 Total Multibanco", formatEur(totMb), "#60a5fa", "−"]].forEach(([l,v,c,op])=>{
-    lines.append(el("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:13 } },
-      el("span", { style:{ color:"#888" } }, l), el("span", { style:{ color:c, fontWeight:600 } }, op+" "+v)));
+  // Calcular totais por categoria de outras despesas (Depósito trata-se como entrega, não despesa)
+  const catTotals = {};
+  let totDeposito = 0;
+  mDates.forEach(d => {
+    (getDay(d).expenses||[]).forEach(e => {
+      const cat = e.category || "Outros";
+      if (cat === "Depósito") {
+        totDeposito += (parseFloat(e.valor)||0);
+      } else {
+        catTotals[cat] = (catTotals[cat] || 0) + (parseFloat(e.valor)||0);
+      }
+    });
   });
+  const totPort = dayStats.reduce((s,d)=>s+d.portagens,0);
+  const totCombRes = dayStats.reduce((s,d)=>s+d.combustivel,0);
+  const totOutrasRes = Object.values(catTotals).reduce((s,v)=>s+v,0);
+  const totEntregarReal = totVf - totComTotal - totCombRes + totPort - totOutrasRes - totDeposito - totMb;
+
+  wrap.append(el("div", { style:{ fontSize:11, color:"#4ade80", fontWeight:700, letterSpacing:1, margin:"16px 0 8px", textTransform:"uppercase" } }, "💰 Valor a Entregar"));
+  const devCard = el("div", { style:{ background: totEntregarReal>=0?"#1a2e1a":"#2e1a1a", border:`1px solid ${totEntregarReal>=0?"#4ade80":"#f87171"}55`, borderRadius:14, padding:18, marginBottom:10 } });
+
+  const lines = el("div", { style:{ display:"flex", flexDirection:"column", gap:6, marginBottom:14 } });
+
+  // Total Faturado
+  lines.append(el("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:13 } },
+    el("span", { style:{ color:"#888" } }, "💶 Total Faturado"),
+    el("span", { style:{ color:"#4ade80", fontWeight:600 } }, "+ "+formatEur(totVf))));
+
+  // Comissão
+  lines.append(el("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:13 } },
+    el("span", { style:{ color:"#888" } }, "📊 Comissão c/ IVA"),
+    el("span", { style:{ color:"#c084fc", fontWeight:600 } }, "− "+formatEur(totComTotal))));
+
+  // Combustível
+  lines.append(el("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:13 } },
+    el("span", { style:{ color:"#888" } }, "⛽ Combustível"),
+    el("span", { style:{ color:"#f87171", fontWeight:600 } }, "− "+formatEur(totCombRes))));
+
+  // Multibanco
+  lines.append(el("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:13 } },
+    el("span", { style:{ color:"#888" } }, "💳 Multibanco"),
+    el("span", { style:{ color:"#60a5fa", fontWeight:600 } }, "− "+formatEur(totMb))));
+
+  // Depósito (logo a seguir ao Multibanco — também é uma forma de entrega)
+  if (totDeposito > 0) {
+    lines.append(el("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:13 } },
+      el("span", { style:{ color:"#888" } }, "🏦 Depósito Bancário"),
+      el("span", { style:{ color:"#60a5fa", fontWeight:600 } }, "− "+formatEur(totDeposito))));
+  }
+
+  // Outras despesas por categoria (sem Depósito)
+  const catEntries = Object.entries(catTotals).filter(([cat]) => cat !== "Depósito").sort((a,b)=>b[1]-a[1]);
+  if (catEntries.length > 0) {
+    lines.append(el("div", { style:{ fontSize:11, color:"#666", margin:"6px 0 2px", fontWeight:600, textTransform:"uppercase", letterSpacing:0.5 } }, "🧾 Outras Despesas"));
+    catEntries.forEach(([cat, val]) => {
+      lines.append(el("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:13, paddingLeft:12 } },
+        el("span", { style:{ color:"#888" } }, "· "+cat),
+        el("span", { style:{ color:"#f87171", fontWeight:600 } }, "− "+formatEur(val))));
+    });
+    if (catEntries.length > 1) {
+      lines.append(el("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:12, paddingLeft:12, marginTop:2 } },
+        el("span", { style:{ color:"#666" } }, "Total outras despesas"),
+        el("span", { style:{ color:"#f87171" } }, "− "+formatEur(totOutrasRes))));
+    }
+  }
+
+  // Portagens (soma)
+  lines.append(el("div", { style:{ display:"flex", justifyContent:"space-between", fontSize:13, marginTop:4 } },
+    el("span", { style:{ color:"#888" } }, "🛣️ Portagens (recebidas do cliente)"),
+    el("span", { style:{ color:"#4ade80", fontWeight:600 } }, "+ "+formatEur(totPort))));
+
   devCard.append(lines);
   devCard.append(el("div", { style:{ height:1, background:"#333", marginBottom:14 } }));
   devCard.append(el("div", { style:{ display:"flex", justifyContent:"space-between", alignItems:"center" } },
     el("span", { style:{ fontWeight:700, fontSize:14 } }, "Total a Entregar"),
-    el("span", { style:{ fontWeight:800, fontSize:28, color: totEntregar>=0?"#4ade80":"#f87171" } }, formatEur(totEntregar))
+    el("span", { style:{ fontWeight:800, fontSize:28, color: totEntregarReal>=0?"#4ade80":"#f87171" } }, formatEur(totEntregarReal))
   ));
   wrap.append(devCard);
 
