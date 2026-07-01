@@ -147,8 +147,11 @@ function updateDayLocal(date, patch) {
   setState({ records: updated });
 }
 
+let saveTimeout = null;
 function updateDayDebounced(date, patch) {
   updateDayLocal(date, patch);
+  clearTimeout(saveTimeout);
+  saveTimeout = setTimeout(() => saveDayToSheet(date, getDay(date)), 700);
 }
 
 async function confirmDeleteDay() {
