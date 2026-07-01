@@ -471,7 +471,12 @@ function renderResumo(){
 
   wrap.append(h("div",{style:{fontSize:"11px",color:"#facc15",fontWeight:"700",letterSpacing:"1px",marginBottom:"8px",textTransform:"uppercase"}},"📍 Quilómetros"));
   wrap.append(kpi("🛣️","Média de KM por Dia",(tKm/dias).toFixed(1)+" km",`Total: ${tKm.toFixed(0)} km em ${dias} dias`,"#facc15"));
-  wrap.append(kpi("💶","Faturado/KM — Dia","€"+(ds.reduce((s,d)=>s+(d.tkm>0?d.fat/d.tkm:0),0)/dias).toFixed(3)+"/km","Média KM diário","#60a5fa"));
+  // KM do dia selecionado
+  const selDay = getDay(S.date);
+  const selC = calc(newBuf(selDay));
+  const fatKmDia = selC.tkm > 0 ? selC.fat / selC.tkm : 0;
+
+  wrap.append(kpi("💶","Faturado/KM — Dia","€"+fatKmDia.toFixed(3)+"/km","Faturado ÷ KM do dia "+S.date,"#60a5fa"));
   wrap.append(kpi("📈","Faturado/KM — Acumulado","€"+(tKm>0?tV/tKm:0).toFixed(3)+"/km","Média KM Mensal","#60a5fa"));
   wrap.append(h("div",{style:{fontSize:"11px",color:"#f87171",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"⛽ Combustível"));
   wrap.append(kpi("⛽","Custo por 100 km",eur(tKm>0?(tC/tKm)*100:0)+"/100km",`${eur(tC)} gastos · ${tKm.toFixed(0)} km`,"#f87171"));
