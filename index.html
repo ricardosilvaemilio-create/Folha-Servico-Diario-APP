@@ -31,7 +31,7 @@ const CATS = ["Depósito","Extintor","Inspeção","Lavagem","Oficina","Outros"];
 let S = {
   url:"", ok:false, loading:false, syncing:false, saved:false, err:"",
   records:{}, tab:0, date:today(), month:today().slice(0,7),
-  loadedMonths:{}, expModal:false, deleteModal:false,
+  loadedMonths:{},   expModal:false, deleteModal:false, anual:null,
   editExpIdx:null, expForm:{cat:CATS[0],desc:"",val:""}
 };
 
@@ -174,7 +174,8 @@ function render(){
     if(S.tab===0) content.append(renderHoje());
     else if(S.tab===1) content.append(renderHistorico());
     else if(S.tab===2) content.append(renderRelatorio());
-    else content.append(renderResumo());
+    else if(S.tab===3) content.append(renderResumo());
+    else content.append(renderAnual());
     root.append(content);
   }
 
@@ -210,7 +211,7 @@ function renderSetup(){
 }
 
 function renderHeader(){
-  const tabs=["Hoje","Histórico","Relatório","Resumo"];
+  const tabs=["Hoje","Histórico","Relatório","Resumo","Anual"];
   const hdr=h("div",{style:{background:"#1a1a1a",padding:"16px 16px 0",borderBottom:"1px solid #333",position:"sticky",top:"0",zIndex:"10"}});
   const top=h("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"12px"}},
     h("span",{style:{fontSize:"28px"}},"🚕"),
@@ -434,6 +435,114 @@ function renderRelatorio(){
       h("div",{style:{fontWeight:"800",fontSize:"28px",color:st.entr>=0?"#4ade80":"#f87171"}},eur(st.entr))
     )
   ));
+  return wrap;
+}
+
+function renderAnual(){
+  const wrap=h("div",{});
+  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"16px",marginBottom:"4px",color:"#facc15"}},"📅 Radiografia Anual 2026"));
+  wrap.append(h("div",{style:{fontSize:"12px",color:"#666",marginBottom:"16px"}},"Dados da folha Resumo Anual 2026"));
+
+  if(!S.anual){
+    // Carrega dados
+    wrap.append(h("div",{style:{textAlign:"center",color:"#888",padding:"40px"}},"A carregar..."));
+    apiGet("getAnual").then(data=>{
+      S.anual=data;
+      if(S.tab===4) render();
+    });
+    return wrap;
+  }
+
+  if(S.anual.error){
+    wrap.append(h("div",{style:{color:"#f87171",padding:"20px"}},S.anual.error));
+    return wrap;
+  }
+
+  const {meses,totais,previsao,viatura}=S.anual;
+
+  // Botão atualizar
+  wrap.append(h("div",{style:{display:"flex",justifyContent:"flex-end",marginBottom:"12px"}},
+    h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"11px",cursor:"pointer"},
+      onclick:()=>{S.anual=null;render();}},"\uD83D\uDD04 Atualizar")
+  ));
+
+  // Tabela mensal
+  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#facc15",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"💶 Faturação Mensal"));
+  const table=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",overflow:"hidden",marginBottom:"16px"}});
+
+  // Header
+  const hdr=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"8px 12px",background:"#2a2a2a",fontSize:"11px",color:"#666",fontWeight:"700"}});
+  ["Mês","Fat. 2026","Fat. 2025","KMs"].forEach(t=>hdr.append(h("span",{},t)));
+  table.append(hdr);
+
+  meses.forEach((m,i)=>{
+    const diff = (parseFloat(m.fat2026)||0) - (parseFloat(m.fat2025)||0);
+    const row=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"8px 12px",background:i%2===0?"#1e1e1e":"#232323",fontSize:"13px",borderTop:"1px solid #2a2a2a"}});
+    row.append(
+      h("span",{style:{color:"#fff",fontWeight:"600"}},m.mes),
+      h("span",{style:{color:"#4ade80"}},eur(m.fat2026)),
+      h("span",{style:{color:diff>=0?"#4ade80":"#f87171"}},eur(m.fat2025)),
+      h("span",{style:{color:"#facc15"}},Number(m.kms2026).toFixed(0)+" km")
+    );
+    table.append(row);
+  });
+
+  // Totais
+  const totRow=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"10px 12px",background:"#2a2a2a",fontSize:"13px",fontWeight:"700",borderTop:"2px solid #333"}});
+  totRow.append(
+    h("span",{style:{color:"#facc15"}},"Total"),
+    h("span",{style:{color:"#4ade80"}},eur(totais.fat2026)),
+    h("span",{style:{color:"#aaa"}},eur(totais.fat2025)),
+    h("span",{style:{color:"#facc15"}},Number(totais.kms2026).toFixed(0)+" km")
+  );
+  table.append(totRow);
+  wrap.append(table);
+
+  // Combustível
+  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#f87171",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"⛽ Combustível"));
+  const combGrid=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"16px"}});
+  meses.forEach(m=>{
+    if(parseFloat(m.comb2026)>0){
+      combGrid.append(h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"10px 14px"}},
+        h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},m.mes),
+        h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(m.comb2026))
+      ));
+    }
+  });
+  combGrid.append(h("div",{style:{background:"#2e1a1a",borderRadius:"10px",padding:"10px 14px",border:"1px solid #f8717133"}},
+    h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},"Total Combustível"),
+    h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(totais.comb2026))
+  ));
+  wrap.append(combGrid);
+
+  // Previsão
+  if(previsao && Object.keys(previsao).length>0){
+    wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#c084fc",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"📈 Previsão do Ano"));
+    const prevCard=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
+    Object.values(previsao).forEach(p=>{
+      if(!p.label) return;
+      prevCard.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"8px"}},
+        h("span",{style:{color:"#aaa"}},p.label),
+        h("span",{style:{color:"#c084fc",fontWeight:"700"}},typeof p.valor==="number"?eur(p.valor):p.valor)
+      ));
+    });
+    wrap.append(prevCard);
+  }
+
+  // Viatura
+  if(viatura && viatura.length>0){
+    wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#60a5fa",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"🚕 Viatura"));
+    const viatCard=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
+    viatura.forEach(v=>{
+      if(!v.label) return;
+      viatCard.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"8px"}},
+        h("span",{style:{color:"#aaa"}},v.label),
+        h("span",{style:{color:"#60a5fa",fontWeight:"700"}},typeof v.valor==="number"&&v.label.toLowerCase().includes("km")?Number(v.valor).toFixed(0)+" km":typeof v.valor==="number"?eur(v.valor):v.valor)
+      ));
+    });
+    wrap.append(viatCard);
+  }
+
   return wrap;
 }
 
