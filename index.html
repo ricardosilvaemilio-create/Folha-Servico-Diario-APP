@@ -31,7 +31,7 @@ const CATS = ["Depósito","Extintor","Inspeção","Lavagem","Oficina","Outros"];
 let S = {
   url:"", ok:false, loading:false, syncing:false, saved:false, err:"",
   records:{}, tab:0, date:today(), month:today().slice(0,7),
-  loadedMonths:{},   expModal:false, deleteModal:false, anual:null,
+  loadedMonths:{},   expModal:false, deleteModal:false, anual:null, resumoTab:"mensal",
   editExpIdx:null, expForm:{cat:CATS[0],desc:"",val:""}
 };
 
@@ -174,8 +174,7 @@ function render(){
     if(S.tab===0) content.append(renderHoje());
     else if(S.tab===1) content.append(renderHistorico());
     else if(S.tab===2) content.append(renderRelatorio());
-    else if(S.tab===3) content.append(renderResumo());
-    else content.append(renderAnual());
+    else content.append(renderResumo());
     root.append(content);
   }
 
@@ -211,7 +210,7 @@ function renderSetup(){
 }
 
 function renderHeader(){
-  const tabs=["Hoje","Histórico","Relatório","Resumo","Anual"];
+  const tabs=["Hoje","Histórico","Relatório","Resumo"];
   const hdr=h("div",{style:{background:"#1a1a1a",padding:"16px 16px 0",borderBottom:"1px solid #333",position:"sticky",top:"0",zIndex:"10"}});
   const top=h("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"12px"}},
     h("span",{style:{fontSize:"28px"}},"🚕"),
@@ -548,6 +547,26 @@ function renderAnual(){
 
 function renderResumo(){
   const wrap=h("div",{});
+  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"16px",marginBottom:"16px",color:"#facc15"}},"📊 Resumo"));
+
+  // Seletor Mensal / Anual
+  const selector=h("div",{style:{display:"flex",background:"#1e1e1e",borderRadius:"10px",padding:"4px",marginBottom:"20px",gap:"4px"}});
+  ["mensal","anual"].forEach(t=>{
+    selector.append(h("button",{
+      style:{flex:"1",padding:"8px",border:"none",borderRadius:"8px",cursor:"pointer",fontWeight:"700",fontSize:"13px",
+        background:S.resumoTab===t?"#facc15":"transparent",
+        color:S.resumoTab===t?"#111":"#888",transition:"all 0.2s"},
+      onclick:()=>{ S.resumoTab=t; render(); }
+    },t==="mensal"?"📈 Mensal":"📅 Anual"));
+  });
+  wrap.append(selector);
+
+  if(S.resumoTab==="mensal") wrap.append(renderResumoMensal());
+  else wrap.append(renderAnual());
+
+  return wrap;
+}
+  const wrap=h("div",{});
   wrap.append(h("div",{style:{fontWeight:"700",fontSize:"16px",marginBottom:"4px",color:"#facc15"}},"📊 Resumo Mensal"));
   wrap.append(h("div",{style:{fontSize:"12px",color:"#666",marginBottom:"16px"}},"Indicadores de performance"));
   wrap.append(h("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"20px"}},
@@ -578,7 +597,7 @@ function renderResumo(){
     );
   }
 
-  wrap.append(h("div",{style:{fontSize:"11px",color:"#facc15",fontWeight:"700",letterSpacing:"1px",marginBottom:"8px",textTransform:"uppercase"}},"📍 Quilómetros"));
+function renderResumoMensal(){
   wrap.append(kpi("🛣️","Média de KM por Dia",(tKm/dias).toFixed(1)+" km",`Total: ${tKm.toFixed(0)} km em ${dias} dias`,"#facc15"));
   // KM do dia selecionado
   const selDay = getDay(S.date);
