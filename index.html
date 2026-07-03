@@ -560,8 +560,8 @@ function renderExpModal() {
 
 // Inicializa
 S.url = BACKEND_URL;
-loadMonth(S.date.slice(0,7)).then(()=>{ B=newBuf(getDay(S.date)); render(); });
 render();
+loadMonth(S.date.slice(0,7)).then(()=>{ B=newBuf(getDay(S.date)); render(); });
 </script>
 </body>
 </html>
