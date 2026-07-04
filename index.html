@@ -567,10 +567,10 @@ function renderAnual() {
   const janRecs=Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual+"-01")).sort((a,b)=>a[0].localeCompare(b[0]));
   const kmInicioAno=janRecs.length>0?(parseFloat(janRecs[0][1].kmInicial)||0):0;
   const totalKmAno=anoRecs.reduce((s,[,r])=>{ const kI=parseFloat(r.kmInicial)||0,kF=parseFloat(r.kmFinal)||0; return s+(kF>kI?kF-kI:0); },0);
-  const diasTrabAno=anoRecs.filter(([,r])=>(parseFloat(r.valorFaturado)||0)>0).length;
+  const diasComKmAno=anoRecs.filter(([,r])=>{ const kI=parseFloat(r.kmInicial)||0,kF=parseFloat(r.kmFinal)||0; return kF>kI; }).length;
   const diasAno=(parseInt(anoAtual)%4===0)?366:365;
-  const mediaKmDiaTrab=diasTrabAno>0?totalKmAno/diasTrabAno:0;
-  const previsaoKmAno=mediaKmDiaTrab*diasAno;
+  const mediaKmDia=diasComKmAno>0?totalKmAno/diasComKmAno:0;
+  const previsaoKmAno=mediaKmDia*diasAno;
   const previsaoKmViatura=kmInicioAno+previsaoKmAno;
   const mesRecs=Object.entries(S.records).filter(([d])=>d.startsWith(mesAtual));
   const diasTrabMes=mesRecs.filter(([,r])=>(parseFloat(r.valorFaturado)||0)>0).length;
