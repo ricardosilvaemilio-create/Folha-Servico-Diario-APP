@@ -85,6 +85,28 @@ async function loadMonth(m) {
   S.loading=false; render();
 }
 
+function getPrevKmFinal(date) {
+  const dates = Object.keys(S.records).sort((a,b)=>a.localeCompare(b));
+  const idx = dates.indexOf(date);
+  if(idx > 0) return parseFloat(getDay(dates[idx-1]).kmFinal)||0;
+  // Se não encontrar na lista, procura o dia imediatamente anterior
+  const prev = new Date(date);
+  prev.setDate(prev.getDate()-1);
+  const prevStr = prev.toISOString().split("T")[0];
+  return parseFloat((S.records[prevStr]||{}).kmFinal)||0;
+}
+
+function initBufferWithPrevKm(date) {
+  const day = getDay(date);
+  const buf = newBuf(day);
+  // Se o dia ainda não tem KM Inicial preenchido, preenche com o KM Final do dia anterior
+  if((!buf.kmI || parseFloat(buf.kmI)===0) && !day.kmInicial) {
+    const prevKm = getPrevKmFinal(date);
+    if(prevKm > 0) buf.kmI = prevKm.toString();
+  }
+  return buf;
+}
+
 async function saveDay() {
   syncBufferFromDOM();
   const date=S.date;
@@ -205,10 +227,21 @@ function renderHoje() {
   const c=calc(b);
   const wrap=h("div",{});
 
+  // Encontra o KM final do dia anterior
+  function getPrevKmFinal() {
+    const dates = Object.keys(S.records).sort((a,b)=>a.localeCompare(b));
+    const idx = dates.indexOf(d);
+    if(idx > 0) {
+      const prevDay = getDay(dates[idx-1]);
+      return parseFloat(prevDay.kmFinal)||0;
+    }
+    return 0;
+  }
+
   const dateRow=h("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"16px"}},
     h("span",{style:{fontSize:"13px",color:"#aaa"}},"📅 Data:"),
     h("input",{type:"date",value:d,style:{background:"#222",border:"1px solid #444",color:"#fff",borderRadius:"8px",padding:"4px 10px",fontSize:"13px"},
-      onchange:async e=>{ syncBufferFromDOM(); S.date=e.target.value; await loadMonth(S.date.slice(0,7)); B=newBuf(getDay(S.date)); render(); }}),
+      onchange:async e=>{ syncBufferFromDOM(); S.date=e.target.value; await loadMonth(S.date.slice(0,7)); B=initBufferWithPrevKm(S.date); render(); }}),
     h("button",{style:{marginLeft:"auto",background:"#333",border:"none",borderRadius:"8px",padding:"5px 10px",color:"#aaa",fontSize:"13px",cursor:"pointer"},
       onclick:async()=>{ S.loadedMonths[S.date.slice(0,7)]=false; await loadMonth(S.date.slice(0,7)); B=newBuf(getDay(S.date)); render(); }},"🔄")
   );
@@ -218,6 +251,27 @@ function renderHoje() {
   wrap.append(h("div",{class:"card"},
     h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#facc15",fontSize:"14px"}},"📍 Quilómetros"),
     h("div",{class:"grid2",style:{marginBottom:"10px"}}, mkField("KM Inicial","f_kmI",b.kmI,"0"), mkField("KM Final","f_kmF",b.kmF,"0")),
+    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}},
+      h("button",{
+        style:{background:"#374151",border:"none",borderRadius:"8px",padding:"6px 14px",color:"#94a3b8",fontSize:"12px",fontWeight:"700",cursor:"pointer"},
+        onclick:()=>{
+          const prevKm = getPrevKmFinal();
+          if(prevKm > 0) {
+            B.kmI = prevKm.toString();
+            B.kmF = prevKm.toString();
+            // Atualiza os inputs no DOM
+            const kmI = document.getElementById("f_kmI");
+            const kmF = document.getElementById("f_kmF");
+            if(kmI) kmI.value = prevKm;
+            if(kmF) kmF.value = prevKm;
+            updateCalc();
+          } else {
+            S.err = "Não foi encontrado o KM final do dia anterior.";
+            renderStatus();
+          }
+        }
+      },"🛌 Folga")
+    ),
     h("div",{style:{background:"#facc1520",borderRadius:"8px",padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
       h("span",{style:{color:"#aaa",fontSize:"13px"}},"Total do Dia"),
       h("span",{id:"c_tkm",style:{color:"#facc15",fontWeight:"800",fontSize:"20px"}},km(c.tkm))
@@ -308,12 +362,12 @@ function renderHistorico() {
     h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"11px",cursor:"pointer"},
       onclick:async()=>{ S.loadedMonths[S.date.slice(0,7)]=false; await loadMonth(S.date.slice(0,7)); render(); }},"🔄 Sincronizar")
   ));
-  const dates=Object.keys(S.records).sort((a,b)=>b.localeCompare(a));
+  const dates=Object.keys(S.records).sort((a,b)=>a.localeCompare(b));
   if(!dates.length){ wrap.append(h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Nenhum registo carregado.")); return wrap; }
   dates.forEach(d=>{
     const c=calc(newBuf(getDay(d))); const isT=d===today();
     wrap.append(h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"14px",marginBottom:"10px",cursor:"pointer",border:isT?"1px solid #facc1566":"1px solid transparent"},
-      onclick:()=>{ syncBufferFromDOM(); B=newBuf(getDay(d)); S.date=d; S.tab=0; render(); }},
+      onclick:()=>{ syncBufferFromDOM(); B=initBufferWithPrevKm(d); S.date=d; S.tab=0; render(); }},
       h("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"8px"}},
         h("div",{style:{fontWeight:"700",fontSize:"14px"}},(isT?"🟡 Hoje":"📅")+" "+d),
         h("div",{style:{fontWeight:"800",fontSize:"16px",color:c.entr>=0?"#4ade80":"#f87171"}},eur(c.entr))
@@ -415,10 +469,17 @@ function renderResumoMensal() {
     );
   }
 
+  // Média acumulada anual: soma faturado e km de todos os meses carregados
+  const anoRecords = Object.values(S.records);
+  const anoTotKm = anoRecords.reduce((s,r)=>{ const kI=parseFloat(r.kmInicial)||0,kF=parseFloat(r.kmFinal)||0; return s+(kF>kI?kF-kI:0); },0);
+  const anoTotFat = anoRecords.reduce((s,r)=>s+(parseFloat(r.valorFaturado)||0),0);
+  const fatKmAnual = anoTotKm>0 ? anoTotFat/anoTotKm : 0;
+
   wrap.append(h("div",{style:{fontSize:"11px",color:"#facc15",fontWeight:"700",letterSpacing:"1px",marginBottom:"8px",textTransform:"uppercase"}},"📍 Quilómetros"));
-  wrap.append(kpi("🛣️","Média de KM por Dia",(tKm/dias).toFixed(1)+" km","Total: "+tKm.toFixed(0)+" km em "+dias+" dias","#facc15"));
+  wrap.append(kpi("🛣️","Média de KM por Dia",(tKm/Math.max(dias,1)).toFixed(1)+" km","Total: "+tKm.toFixed(0)+" km em "+dias+" dias","#facc15"));
   wrap.append(kpi("💶","Faturado/KM — Dia ("+S.date+")","€"+(Math.round(fatKmDia*100)/100).toFixed(2)+"/km","Faturado ÷ KM do dia selecionado","#60a5fa"));
-  wrap.append(kpi("📈","Faturado/KM — Acumulado","€"+(tKm>0?(Math.round((tVf/tKm)*100)/100).toFixed(2):"0.00")+"/km","Média KM Mensal","#60a5fa"));
+  wrap.append(kpi("📈","Faturado/KM — Acumulado Mensal","€"+(tKm>0?(Math.round((tVf/tKm)*100)/100).toFixed(2):"0.00")+"/km","Média KM Mensal","#60a5fa"));
+  wrap.append(kpi("🗓️","Faturado/KM — Acumulado Anual","€"+(Math.round(fatKmAnual*100)/100).toFixed(2)+"/km","Média KM de todos os meses carregados","#a78bfa"));
   wrap.append(h("div",{style:{fontSize:"11px",color:"#f87171",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"⛽ Combustível"));
   wrap.append(kpi("⛽","Custo por 100 km","€"+(tKm>0?(Math.round((tC/tKm)*100*100)/100).toFixed(2):"0.00")+"/100km",eur(tC)+" gastos · "+tKm.toFixed(0)+" km","#f87171"));
   wrap.append(h("div",{style:{fontSize:"11px",color:"#c084fc",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"📊 Comissão"));
@@ -494,6 +555,89 @@ function renderAnual() {
     wrap.append(prevCard);
   }
 
+  // ── PREVISÕES CALCULADAS ──
+  const hoje = today();
+  const anoAtual = hoje.slice(0,4);
+  const mesAtual = hoje.slice(0,7);
+
+  // Todos os registos do ano atual
+  const anoRecs = Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual));
+
+  // KM início do ano — KM Inicial do primeiro dia registado em Janeiro
+  const janRecs = Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual+"-01")).sort((a,b)=>a[0].localeCompare(b[0]));
+  const kmInicioAno = janRecs.length>0 ? (parseFloat(janRecs[0][1].kmInicial)||0) : 0;
+
+  // KM atual da viatura — KM Final do último dia registado
+  const todosOrdenados = Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual)).sort((a,b)=>b[0].localeCompare(a[0]));
+  const kmAtualViatura = todosOrdenados.length>0 ? (parseFloat(todosOrdenados[0][1].kmFinal)||0) : 0;
+
+  // Total KM percorridos até hoje
+  const totalKmAno = anoRecs.reduce((s,[,r])=>{ const kI=parseFloat(r.kmInicial)||0,kF=parseFloat(r.kmFinal)||0; return s+(kF>kI?kF-kI:0); },0);
+
+  // Dias trabalhados no ano (com faturação > 0)
+  const diasTrabAno = anoRecs.filter(([,r])=>(parseFloat(r.valorFaturado)||0)>0).length;
+
+  // Dias do ano e dias passados até hoje
+  const isLeap = (parseInt(anoAtual)%4===0);
+  const diasAno = isLeap ? 366 : 365;
+  const inicioAno = new Date(anoAtual+"-01-01");
+  const hojeDate = new Date(hoje);
+  const diasPassados = Math.floor((hojeDate-inicioAno)/(1000*60*60*24))+1;
+  const diasRestantes = diasAno - diasPassados;
+
+  // Média diária KM (só dias trabalhados)
+  const mediaKmDiaTrab = diasTrabAno>0 ? totalKmAno/diasTrabAno : 0;
+
+  // Previsão KM percorridos no ano (média × dias do ano)
+  const previsaoKmAno = mediaKmDiaTrab * diasAno;
+
+  // Previsão KM viatura no final do ano
+  const previsaoKmViatura = kmInicioAno + previsaoKmAno;
+
+  // Faturação do mês corrente
+  const mesRecs = Object.entries(S.records).filter(([d])=>d.startsWith(mesAtual));
+  const diasTrabMes = mesRecs.filter(([,r])=>(parseFloat(r.valorFaturado)||0)>0).length;
+  const totalFatMes = mesRecs.reduce((s,[,r])=>s+(parseFloat(r.valorFaturado)||0),0);
+  const mediaFatDia = diasTrabMes>0 ? totalFatMes/diasTrabMes : 0;
+
+  // Dias do mês corrente
+  const [anoM, mesM] = mesAtual.split("-").map(Number);
+  const diasMes = new Date(anoM, mesM, 0).getDate();
+
+  // Previsão faturado mês
+  const previsaoFatMes = mediaFatDia * diasMes;
+
+  // Previsão comissão mês (40% + IVA 23%)
+  const previsaoComMes = previsaoFatMes * 0.40 * 1.23;
+
+  function kpiPrev(icon,title,value,sub,color) {
+    return h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"10px",border:`1px solid ${color}33`}},
+      h("div",{style:{fontSize:"11px",color:"#777",marginBottom:"6px"}}),
+      h("div",{style:{fontSize:"11px",color:"#777",marginBottom:"6px"}},icon+" "+title),
+      h("div",{style:{fontWeight:"800",fontSize:"20px",color}},value),
+      sub?h("div",{style:{fontSize:"11px",color:"#666",marginTop:"4px"}},sub):null
+    );
+  }
+
+  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#4ade80",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"🔮 Previsões Calculadas"));
+  const prevCalcCard=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
+
+  const row=(label,valor,color)=>h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"10px",paddingBottom:"10px",borderBottom:"1px solid #2a2a2a"}},
+    h("span",{style:{color:"#aaa",flex:"1"}},label),
+    h("span",{style:{color:color||"#4ade80",fontWeight:"700"}},valor)
+  );
+
+  prevCalcCard.append(
+    row("🛣️ Previsão KM Percorridos no Ano",Number(previsaoKmAno.toFixed(0)).toLocaleString()+" km","#facc15"),
+    row("🚕 KM Viatura no Início do Ano",Number(kmInicioAno).toLocaleString()+" km","#aaa"),
+    row("🚕 KM Viatura Atual",Number(kmAtualViatura).toLocaleString()+" km","#60a5fa"),
+    row("🔮 KM Viatura Previsto Final do Ano",Number(previsaoKmViatura.toFixed(0)).toLocaleString()+" km","#facc15"),
+    h("div",{style:{height:"8px"}}),
+    row("📅 Previsão Faturado Mês ("+mesAtual+")",eur(previsaoFatMes),"#4ade80"),
+    row("📊 Previsão Comissão Mês ("+mesAtual+")",eur(previsaoComMes),"#c084fc")
+  );
+  wrap.append(prevCalcCard);
+
   if(viatura&&viatura.length>0){
     wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#60a5fa",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"🚕 Viatura"));
     const viatCard=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
@@ -506,7 +650,13 @@ function renderAnual() {
 function renderNav() {
   const nav=h("div",{style:{position:"fixed",bottom:"0",left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"420px",background:"#1a1a1a",borderTop:"1px solid #333",padding:"10px 16px"}});
   if(S.tab===0){
-    nav.append(h("button",{id:"btn_save",style:{width:"100%",padding:"13px",background:S.saved?"#16a34a":"#facc15",border:"none",borderRadius:"12px",color:"#111",fontWeight:"800",fontSize:"15px",cursor:"pointer"},onclick:saveDay},S.saved?"✅ Guardado!":"💾 Gravar Dia"));
+    const kmIOk = (B.kmI||"").toString().trim()!=="" && parseFloat(B.kmI)>0;
+    const kmFOk = (B.kmF||"").toString().trim()!=="" && parseFloat(B.kmF)>0;
+    const canSave = kmIOk && kmFOk;
+    nav.append(h("button",{id:"btn_save",
+      style:{width:"100%",padding:"13px",background:S.saved?"#16a34a":canSave?"#facc15":"#444",border:"none",borderRadius:"12px",color:canSave?"#111":"#888",fontWeight:"800",fontSize:"15px",cursor:canSave?"pointer":"not-allowed",transition:"all 0.3s"},
+      onclick: canSave ? saveDay : null
+    },S.saved?"✅ Guardado!":"💾 Gravar Dia"));
   } else {
     nav.append(h("div",{style:{height:"44px"}}));
   }
@@ -561,7 +711,7 @@ function renderExpModal() {
 // Inicializa
 S.url = BACKEND_URL;
 render();
-loadMonth(S.date.slice(0,7)).then(()=>{ B=newBuf(getDay(S.date)); render(); });
+loadMonth(S.date.slice(0,7)).then(()=>{ B=initBufferWithPrevKm(S.date); render(); });
 </script>
 </body>
 </html>
