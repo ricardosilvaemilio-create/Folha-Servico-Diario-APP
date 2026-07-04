@@ -547,8 +547,8 @@ function renderAnual() {
   table.append(hdr);
   meses.forEach((m,i)=>{
     const row=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"8px 12px",background:i%2===0?"#1e1e1e":"#232323",fontSize:"13px",borderTop:"1px solid #2a2a2a"}});
-    const diff=(parseFloat(m.fat2026)||0)-(parseFloat(m.fat2025)||0);
-    row.append(h("span",{style:{color:"#fff",fontWeight:"600"}},m.mes),h("span",{style:{color:"#4ade80"}},eur(m.fat2026)),h("span",{style:{color:diff>=0?"#4ade80":"#f87171"}},eur(m.fat2025)),h("span",{style:{color:"#facc15"}},Number(m.kms2026).toFixed(0)+" km"));
+    const fat2025val = parseFloat(m.fat2025)||0;
+    row.append(h("span",{style:{color:"#fff",fontWeight:"600"}},m.mes),h("span",{style:{color:"#4ade80"}},eur(m.fat2026)),h("span",{style:{color:fat2025val>=0?"#4ade80":"#f87171"}},eur(m.fat2025)),h("span",{style:{color:"#facc15"}},Number(m.kms2026).toFixed(0)+" km"));
     table.append(row);
   });
   const totRow=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"10px 12px",background:"#2a2a2a",fontSize:"13px",fontWeight:"700",borderTop:"2px solid #333"}});
@@ -643,8 +643,6 @@ function renderAnual() {
 
   prevCalcCard.append(
     row("🛣️ Previsão KM Percorridos no Ano",Number(previsaoKmAno.toFixed(0)).toLocaleString()+" km","#facc15"),
-    row("🚕 KM Viatura no Início do Ano",Number(kmInicioAno).toLocaleString()+" km","#aaa"),
-    row("🚕 KM Viatura Atual",Number(kmAtualViatura).toLocaleString()+" km","#60a5fa"),
     row("🔮 KM Viatura Previsto Final do Ano",Number(previsaoKmViatura.toFixed(0)).toLocaleString()+" km","#facc15"),
     h("div",{style:{height:"8px"}}),
     row("📅 Previsão Faturado Mês ("+mesAtual+")",eur(previsaoFatMes),"#4ade80"),
