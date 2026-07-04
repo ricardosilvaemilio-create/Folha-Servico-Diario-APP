@@ -63,6 +63,13 @@ function syncBufferFromDOM() {
   B.kmI=g("f_kmI"); B.kmF=g("f_kmF"); B.fat=g("f_fat");
   B.mb=g("f_mb"); B.port=g("f_port"); B.comb=g("f_comb"); B.obs=g("f_obs");
 }
+function canSaveNow() {
+  const kmIEl=document.getElementById("f_kmI");
+  const kmFEl=document.getElementById("f_kmF");
+  const kmI=kmIEl?kmIEl.value:(B.kmI||"");
+  const kmF=kmFEl?kmFEl.value:(B.kmF||"");
+  return kmI.toString().trim()!==""&&parseFloat(kmI)>0&&kmF.toString().trim()!==""&&parseFloat(kmF)>0;
+}
 
 async function apiGet(action,params={}) {
   const u=new URL(S.url); u.searchParams.set("action",action);
@@ -86,23 +93,19 @@ async function loadMonth(m) {
 }
 
 function getPrevKmFinal(date) {
-  const dates = Object.keys(S.records).sort((a,b)=>a.localeCompare(b));
-  const idx = dates.indexOf(date);
-  if(idx > 0) return parseFloat(getDay(dates[idx-1]).kmFinal)||0;
-  // Se não encontrar na lista, procura o dia imediatamente anterior
-  const prev = new Date(date);
-  prev.setDate(prev.getDate()-1);
-  const prevStr = prev.toISOString().split("T")[0];
-  return parseFloat((S.records[prevStr]||{}).kmFinal)||0;
+  const dates=Object.keys(S.records).sort((a,b)=>a.localeCompare(b));
+  const idx=dates.indexOf(date);
+  if(idx>0) return parseFloat(getDay(dates[idx-1]).kmFinal)||0;
+  const prev=new Date(date); prev.setDate(prev.getDate()-1);
+  return parseFloat((S.records[prev.toISOString().split("T")[0]]||{}).kmFinal)||0;
 }
 
 function initBufferWithPrevKm(date) {
-  const day = getDay(date);
-  const buf = newBuf(day);
-  // Se o dia ainda não tem KM Inicial preenchido, preenche com o KM Final do dia anterior
-  if((!buf.kmI || parseFloat(buf.kmI)===0) && !day.kmInicial) {
-    const prevKm = getPrevKmFinal(date);
-    if(prevKm > 0) buf.kmI = prevKm.toString();
+  const day=getDay(date);
+  const buf=newBuf(day);
+  if((!buf.kmI||parseFloat(buf.kmI)===0)&&!day.kmInicial) {
+    const prevKm=getPrevKmFinal(date);
+    if(prevKm>0) buf.kmI=prevKm.toString();
   }
   return buf;
 }
@@ -123,8 +126,7 @@ async function deleteDay() {
   S.syncing=true; renderStatus();
   try {
     await apiPost({action:"deleteDay",data:S.date});
-    delete S.records[S.date];
-    B=newBuf();
+    delete S.records[S.date]; B=newBuf();
   } catch(e) { S.err="Falha: "+e.message; }
   S.syncing=false; S.deleteModal=false; render();
 }
@@ -133,7 +135,8 @@ function renderStatus() {
   const btn=document.getElementById("btn_save");
   const spin=document.getElementById("hdr_spin");
   const errEl=document.getElementById("err_bar");
-  if(btn){ btn.textContent=S.saved?"✅ Guardado!":"💾 Gravar Dia"; btn.style.background=S.saved?"#16a34a":"#facc15"; }
+  const can=canSaveNow();
+  if(btn){ btn.textContent=S.saved?"✅ Guardado!":"💾 Gravar Dia"; btn.style.background=S.saved?"#16a34a":can?"#facc15":"#444"; btn.style.color=can?"#111":"#888"; btn.style.cursor=can?"pointer":"not-allowed"; btn.onclick=can?saveDay:null; }
   if(spin) spin.style.display=S.syncing?"inline-block":"none";
   if(errEl){ errEl.textContent=S.err?"⚠️ "+S.err:""; errEl.style.display=S.err?"block":"none"; }
   updateCalc();
@@ -154,8 +157,8 @@ function updateCalc() {
   set("c_dep_r","− "+eur(c.dep));
   set("c_mb_r","− "+eur(c.mb));
   set("c_entr",eur(c.entr));
-  const el=document.getElementById("c_entr");
-  if(el) el.style.color=c.entr>=0?"#4ade80":"#f87171";
+  const enEl=document.getElementById("c_entr");
+  if(enEl) enEl.style.color=c.entr>=0?"#4ade80":"#f87171";
 }
 
 function h(tag,attrs,...kids) {
@@ -177,7 +180,7 @@ function render() {
   root.append(renderHeader());
   const errBar=h("div",{id:"err_bar",style:{margin:"10px 16px 0",background:"#2e1a1a",border:"1px solid #f8717155",borderRadius:"10px",padding:"8px 12px",fontSize:"11px",color:"#f87171",display:S.err?"block":"none"}},"⚠️ "+(S.err||""));
   root.append(errBar);
-  if(S.loading) { root.append(h("div",{style:{textAlign:"center",padding:"60px",color:"#888"}},"A carregar...")); }
+  if(S.loading){ root.append(h("div",{style:{textAlign:"center",padding:"60px",color:"#888"}},"A carregar...")); }
   else {
     const content=h("div",{style:{padding:"16px"}});
     if(S.tab===0) content.append(renderHoje());
@@ -227,15 +230,12 @@ function renderHoje() {
   const c=calc(b);
   const wrap=h("div",{});
 
-  // Encontra o KM final do dia anterior
-  function getPrevKmFinal() {
-    const dates = Object.keys(S.records).sort((a,b)=>a.localeCompare(b));
-    const idx = dates.indexOf(d);
-    if(idx > 0) {
-      const prevDay = getDay(dates[idx-1]);
-      return parseFloat(prevDay.kmFinal)||0;
-    }
-    return 0;
+  function getPrevKmFinalLocal() {
+    const dates=Object.keys(S.records).sort((a,b)=>a.localeCompare(b));
+    const idx=dates.indexOf(d);
+    if(idx>0) return parseFloat(getDay(dates[idx-1]).kmFinal)||0;
+    const prev=new Date(d); prev.setDate(prev.getDate()-1);
+    return parseFloat((S.records[prev.toISOString().split("T")[0]]||{}).kmFinal)||0;
   }
 
   const dateRow=h("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"16px"}},
@@ -243,7 +243,7 @@ function renderHoje() {
     h("input",{type:"date",value:d,style:{background:"#222",border:"1px solid #444",color:"#fff",borderRadius:"8px",padding:"4px 10px",fontSize:"13px"},
       onchange:async e=>{ syncBufferFromDOM(); S.date=e.target.value; await loadMonth(S.date.slice(0,7)); B=initBufferWithPrevKm(S.date); render(); }}),
     h("button",{style:{marginLeft:"auto",background:"#333",border:"none",borderRadius:"8px",padding:"5px 10px",color:"#aaa",fontSize:"13px",cursor:"pointer"},
-      onclick:async()=>{ S.loadedMonths[S.date.slice(0,7)]=false; await loadMonth(S.date.slice(0,7)); B=newBuf(getDay(S.date)); render(); }},"🔄")
+      onclick:async()=>{ S.loadedMonths[S.date.slice(0,7)]=false; await loadMonth(S.date.slice(0,7)); B=initBufferWithPrevKm(S.date); render(); }},"🔄")
   );
   if(S.records[d]) dateRow.append(h("button",{style:{background:"#7f1d1d",border:"none",borderRadius:"8px",padding:"5px 12px",color:"#fca5a5",fontSize:"12px",fontWeight:"700",cursor:"pointer"},onclick:()=>{ S.deleteModal=true; render(); }},"🗑️"));
   wrap.append(dateRow);
@@ -251,24 +251,17 @@ function renderHoje() {
   wrap.append(h("div",{class:"card"},
     h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#facc15",fontSize:"14px"}},"📍 Quilómetros"),
     h("div",{class:"grid2",style:{marginBottom:"10px"}}, mkField("KM Inicial","f_kmI",b.kmI,"0"), mkField("KM Final","f_kmF",b.kmF,"0")),
-    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"10px"}},
+    h("div",{style:{marginBottom:"10px"}},
       h("button",{
         style:{background:"#374151",border:"none",borderRadius:"8px",padding:"6px 14px",color:"#94a3b8",fontSize:"12px",fontWeight:"700",cursor:"pointer"},
         onclick:()=>{
-          const prevKm = getPrevKmFinal();
-          if(prevKm > 0) {
-            B.kmI = prevKm.toString();
-            B.kmF = prevKm.toString();
-            // Atualiza os inputs no DOM
-            const kmI = document.getElementById("f_kmI");
-            const kmF = document.getElementById("f_kmF");
-            if(kmI) kmI.value = prevKm;
-            if(kmF) kmF.value = prevKm;
-            updateCalc();
-          } else {
-            S.err = "Não foi encontrado o KM final do dia anterior.";
-            renderStatus();
-          }
+          const prevKm=getPrevKmFinalLocal();
+          if(prevKm>0){
+            B.kmI=prevKm.toString(); B.kmF=prevKm.toString();
+            const kmI=document.getElementById("f_kmI"); const kmF=document.getElementById("f_kmF");
+            if(kmI) kmI.value=prevKm; if(kmF) kmF.value=prevKm;
+            updateCalc(); renderStatus();
+          } else { S.err="Não foi encontrado o KM final do dia anterior."; renderStatus(); }
         }
       },"🛌 Folga")
     ),
@@ -348,7 +341,17 @@ function renderHoje() {
   setTimeout(()=>{
     ["f_kmI","f_kmF","f_fat","f_mb","f_port","f_comb"].forEach(id=>{
       const el=document.getElementById(id);
-      if(el) el.addEventListener("input",()=>{ syncBufferFromDOM(); updateCalc(); });
+      if(el) el.addEventListener("input",()=>{
+        syncBufferFromDOM(); updateCalc();
+        const btn=document.getElementById("btn_save");
+        if(btn){
+          const can=canSaveNow();
+          btn.style.background=S.saved?"#16a34a":can?"#facc15":"#444";
+          btn.style.color=can?"#111":"#888";
+          btn.style.cursor=can?"pointer":"not-allowed";
+          btn.onclick=can?saveDay:null;
+        }
+      });
     });
   },0);
 
@@ -410,7 +413,7 @@ function renderRelatorio() {
   wrap.append(grid);
   wrap.append(h("div",{style:{background:"linear-gradient(135deg,#1a2e1a,#1e1e1e)",border:"1px solid #4ade8044",borderRadius:"12px",padding:"16px"}},
     h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-      h("div",{},h("div",{style:{fontSize:"12px",color:"#aaa",marginBottom:"4px"}},"💰 Entregar do Mês"),h("div",{style:{fontSize:"11px",color:"#555"}},"Média: "+eur(st.entr/st.dias)+" / dia")),
+      h("div",{},h("div",{style:{fontSize:"12px",color:"#aaa",marginBottom:"4px"}},"💰 Entregar do Mês"),h("div",{style:{fontSize:"11px",color:"#555"}},"Média: "+eur(st.entr/Math.max(st.dias,1))+" / dia")),
       h("div",{style:{fontWeight:"800",fontSize:"28px",color:st.entr>=0?"#4ade80":"#f87171"}},eur(st.entr))
     )
   ));
@@ -455,11 +458,14 @@ function renderResumoMensal() {
   }));
   const tOut=Object.values(cats).reduce((s,v)=>s+v,0);
   const tEntr=tVf-tCom-tC+tP-tOut-tDep-tMb;
-
   const selDay=getDay(S.date);
   const selKmI=parseFloat(selDay.kmInicial)||0, selKmF=parseFloat(selDay.kmFinal)||0;
   const selTkm=selKmF>selKmI?selKmF-selKmI:0, selFat=parseFloat(selDay.valorFaturado)||0;
   const fatKmDia=selTkm>0?selFat/selTkm:0;
+  const anoRecs=Object.values(S.records);
+  const anoTotKm=anoRecs.reduce((s,r)=>{ const kI=parseFloat(r.kmInicial)||0,kF=parseFloat(r.kmFinal)||0; return s+(kF>kI?kF-kI:0); },0);
+  const anoTotFat=anoRecs.reduce((s,r)=>s+(parseFloat(r.valorFaturado)||0),0);
+  const fatKmAnual=anoTotKm>0?anoTotFat/anoTotKm:0;
 
   function kpi(icon,title,value,sub,color) {
     return h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"10px",border:`1px solid ${color}33`}},
@@ -468,12 +474,6 @@ function renderResumoMensal() {
       sub?h("div",{style:{fontSize:"11px",color:"#666",marginTop:"4px"}},sub):null
     );
   }
-
-  // Média acumulada anual: soma faturado e km de todos os meses carregados
-  const anoRecords = Object.values(S.records);
-  const anoTotKm = anoRecords.reduce((s,r)=>{ const kI=parseFloat(r.kmInicial)||0,kF=parseFloat(r.kmFinal)||0; return s+(kF>kI?kF-kI:0); },0);
-  const anoTotFat = anoRecords.reduce((s,r)=>s+(parseFloat(r.valorFaturado)||0),0);
-  const fatKmAnual = anoTotKm>0 ? anoTotFat/anoTotKm : 0;
 
   wrap.append(h("div",{style:{fontSize:"11px",color:"#facc15",fontWeight:"700",letterSpacing:"1px",marginBottom:"8px",textTransform:"uppercase"}},"📍 Quilómetros"));
   wrap.append(kpi("🛣️","Média de KM por Dia",(tKm/Math.max(dias,1)).toFixed(1)+" km","Total: "+tKm.toFixed(0)+" km em "+dias+" dias","#facc15"));
@@ -485,7 +485,6 @@ function renderResumoMensal() {
   wrap.append(h("div",{style:{fontSize:"11px",color:"#c084fc",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"📊 Comissão"));
   wrap.append(kpi("🧾","Total IVA da Comissão",eur(tIva),"Base: "+eur(tComB)+" · IVA: "+eur(tIva),"#c084fc"));
   wrap.append(h("div",{style:{fontSize:"11px",color:"#4ade80",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"💰 Valor a Entregar"));
-
   const card=h("div",{style:{background:tEntr>=0?"#1a2e1a":"#2e1a1a",border:`1px solid ${tEntr>=0?"#4ade80":"#f87171"}55`,borderRadius:"14px",padding:"18px",marginBottom:"10px"}});
   const lines=h("div",{style:{display:"flex",flexDirection:"column",gap:"6px",marginBottom:"14px"}});
   const lr=(l,v,c,op)=>h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px"}},h("span",{style:{color:"#888"}},l),h("span",{style:{color:c,fontWeight:"600"}},op+" "+v));
@@ -532,9 +531,9 @@ function renderAnual() {
   ["Mês","Fat. 2026","Fat. 2025","KMs"].forEach(t=>hdr.append(h("span",{},t)));
   table.append(hdr);
   meses.forEach((m,i)=>{
+    const fat2025val=parseFloat(m.fat2025)||0;
     const row=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"8px 12px",background:i%2===0?"#1e1e1e":"#232323",fontSize:"13px",borderTop:"1px solid #2a2a2a"}});
-    const diff=(parseFloat(m.fat2026)||0)-(parseFloat(m.fat2025)||0);
-    row.append(h("span",{style:{color:"#fff",fontWeight:"600"}},m.mes),h("span",{style:{color:"#4ade80"}},eur(m.fat2026)),h("span",{style:{color:diff>=0?"#4ade80":"#f87171"}},eur(m.fat2025)),h("span",{style:{color:"#facc15"}},Number(m.kms2026).toFixed(0)+" km"));
+    row.append(h("span",{style:{color:"#fff",fontWeight:"600"}},m.mes),h("span",{style:{color:"#4ade80"}},eur(m.fat2026)),h("span",{style:{color:fat2025val>=0?"#4ade80":"#f87171"}},eur(m.fat2025)),h("span",{style:{color:"#facc15"}},Number(m.kms2026).toFixed(0)+" km"));
     table.append(row);
   });
   const totRow=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"10px 12px",background:"#2a2a2a",fontSize:"13px",fontWeight:"700",borderTop:"2px solid #333"}});
@@ -561,19 +560,51 @@ function renderAnual() {
     viatura.forEach(v=>{ if(!v.label) return; viatCard.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"8px"}},h("span",{style:{color:"#aaa"}},v.label),h("span",{style:{color:"#60a5fa",fontWeight:"700"}},typeof v.valor==="number"&&String(v.label).toLowerCase().includes("km")?Number(v.valor).toFixed(0)+" km":eur(v.valor)))); });
     wrap.append(viatCard);
   }
+
+  // Previsões calculadas
+  const hoje=today(), anoAtual=hoje.slice(0,4), mesAtual=hoje.slice(0,7);
+  const anoRecs=Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual));
+  const janRecs=Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual+"-01")).sort((a,b)=>a[0].localeCompare(b[0]));
+  const kmInicioAno=janRecs.length>0?(parseFloat(janRecs[0][1].kmInicial)||0):0;
+  const totalKmAno=anoRecs.reduce((s,[,r])=>{ const kI=parseFloat(r.kmInicial)||0,kF=parseFloat(r.kmFinal)||0; return s+(kF>kI?kF-kI:0); },0);
+  const diasTrabAno=anoRecs.filter(([,r])=>(parseFloat(r.valorFaturado)||0)>0).length;
+  const diasAno=(parseInt(anoAtual)%4===0)?366:365;
+  const mediaKmDiaTrab=diasTrabAno>0?totalKmAno/diasTrabAno:0;
+  const previsaoKmAno=mediaKmDiaTrab*diasAno;
+  const previsaoKmViatura=kmInicioAno+previsaoKmAno;
+  const mesRecs=Object.entries(S.records).filter(([d])=>d.startsWith(mesAtual));
+  const diasTrabMes=mesRecs.filter(([,r])=>(parseFloat(r.valorFaturado)||0)>0).length;
+  const totalFatMes=mesRecs.reduce((s,[,r])=>s+(parseFloat(r.valorFaturado)||0),0);
+  const mediaFatDia=diasTrabMes>0?totalFatMes/diasTrabMes:0;
+  const [anoM,mesM]=mesAtual.split("-").map(Number);
+  const diasMes=new Date(anoM,mesM,0).getDate();
+  const previsaoFatMes=mediaFatDia*diasMes;
+  const previsaoComMes=previsaoFatMes*0.40*1.23;
+
+  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#4ade80",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"🔮 Previsões Calculadas"));
+  const prevCalcCard=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
+  const row=(label,valor,color)=>h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"10px",paddingBottom:"10px",borderBottom:"1px solid #2a2a2a"}},
+    h("span",{style:{color:"#aaa",flex:"1"}},label),
+    h("span",{style:{color:color||"#4ade80",fontWeight:"700"}},valor)
+  );
+  prevCalcCard.append(
+    row("🛣️ Previsão KM Percorridos no Ano",Number(previsaoKmAno.toFixed(0)).toLocaleString()+" km","#facc15"),
+    row("🔮 Previsão KM Viatura Final do Ano",Number(previsaoKmViatura.toFixed(0)).toLocaleString()+" km","#facc15"),
+    h("div",{style:{height:"8px"}}),
+    row("📅 Previsão Faturado Mês ("+mesAtual+")",eur(previsaoFatMes),"#4ade80"),
+    row("📊 Previsão Comissão Mês ("+mesAtual+")",eur(previsaoComMes),"#c084fc")
+  );
+  wrap.append(prevCalcCard);
   return wrap;
 }
 
 function renderNav() {
   const nav=h("div",{style:{position:"fixed",bottom:"0",left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"420px",background:"#1a1a1a",borderTop:"1px solid #333",padding:"10px 16px"}});
   if(S.tab===0){
-    const kmIOk = (B.kmI||"").toString().trim()!=="" && parseFloat(B.kmI)>0;
-    const kmFOk = (B.kmF||"").toString().trim()!=="" && parseFloat(B.kmF)>0;
-    const canSave = kmIOk && kmFOk;
+    const can=canSaveNow();
     nav.append(h("button",{id:"btn_save",
-      style:{width:"100%",padding:"13px",background:S.saved?"#16a34a":canSave?"#facc15":"#444",border:"none",borderRadius:"12px",color:canSave?"#111":"#888",fontWeight:"800",fontSize:"15px",cursor:canSave?"pointer":"not-allowed",transition:"all 0.3s"},
-      onclick: canSave ? saveDay : null
-    },S.saved?"✅ Guardado!":"💾 Gravar Dia"));
+      style:{width:"100%",padding:"13px",background:S.saved?"#16a34a":can?"#facc15":"#444",border:"none",borderRadius:"12px",color:can?"#111":"#888",fontWeight:"800",fontSize:"15px",cursor:can?"pointer":"not-allowed"},
+      onclick:can?saveDay:null},S.saved?"✅ Guardado!":"💾 Gravar Dia"));
   } else {
     nav.append(h("div",{style:{height:"44px"}}));
   }
@@ -585,7 +616,7 @@ function renderDeleteModal() {
     h("div",{style:{background:"#1e1e1e",borderRadius:"16px",padding:"24px",width:"100%",maxWidth:"360px"}},
       h("div",{style:{fontSize:"36px",textAlign:"center",marginBottom:"12px"}},"🗑️"),
       h("div",{style:{fontWeight:"700",fontSize:"17px",textAlign:"center",marginBottom:"8px"}},"Apagar Registo"),
-      h("div",{style:{fontSize:"13px",color:"#aaa",textAlign:"center",marginBottom:"24px"}},`Apagar o registo de ${S.date}?`),
+      h("div",{style:{fontSize:"13px",color:"#aaa",textAlign:"center",marginBottom:"24px"}},"Apagar o registo de "+S.date+"?"),
       h("div",{style:{display:"flex",gap:"10px"}},
         h("button",{style:{flex:"1",padding:"12px",background:"#333",border:"none",borderRadius:"10px",color:"#aaa",fontWeight:"700",cursor:"pointer"},onclick:()=>{ S.deleteModal=false; render(); }},"Cancelar"),
         h("button",{style:{flex:"1",padding:"12px",background:"#dc2626",border:"none",borderRadius:"10px",color:"#fff",fontWeight:"700",cursor:"pointer"},onclick:deleteDay},"Apagar")
@@ -626,7 +657,7 @@ function renderExpModal() {
 }
 
 // Inicializa
-S.url = BACKEND_URL;
+S.url=BACKEND_URL;
 render();
 loadMonth(S.date.slice(0,7)).then(()=>{ B=initBufferWithPrevKm(S.date); render(); });
 </script>
