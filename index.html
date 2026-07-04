@@ -348,7 +348,21 @@ function renderHoje() {
   setTimeout(()=>{
     ["f_kmI","f_kmF","f_fat","f_mb","f_port","f_comb"].forEach(id=>{
       const el=document.getElementById(id);
-      if(el) el.addEventListener("input",()=>{ syncBufferFromDOM(); updateCalc(); });
+      if(el) el.addEventListener("input",()=>{
+        syncBufferFromDOM();
+        updateCalc();
+        // Atualiza o botão Gravar sem re-render completo
+        const btn=document.getElementById("btn_save");
+        if(btn){
+          const kmIOk=(B.kmI||"").toString().trim()!==""&&parseFloat(B.kmI)>0;
+          const kmFOk=(B.kmF||"").toString().trim()!==""&&parseFloat(B.kmF)>0;
+          const canSave=kmIOk&&kmFOk;
+          btn.style.background=S.saved?"#16a34a":canSave?"#facc15":"#444";
+          btn.style.color=canSave?"#111":"#888";
+          btn.style.cursor=canSave?"pointer":"not-allowed";
+          btn.onclick=canSave?saveDay:null;
+        }
+      });
     });
   },0);
 
