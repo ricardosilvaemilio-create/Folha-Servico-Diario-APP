@@ -348,21 +348,7 @@ function renderHoje() {
   setTimeout(()=>{
     ["f_kmI","f_kmF","f_fat","f_mb","f_port","f_comb"].forEach(id=>{
       const el=document.getElementById(id);
-      if(el) el.addEventListener("input",()=>{
-        syncBufferFromDOM();
-        updateCalc();
-        // Atualiza o botão Gravar sem re-render completo
-        const btn=document.getElementById("btn_save");
-        if(btn){
-          const kmIOk=(B.kmI||"").toString().trim()!==""&&parseFloat(B.kmI)>0;
-          const kmFOk=(B.kmF||"").toString().trim()!==""&&parseFloat(B.kmF)>0;
-          const canSave=kmIOk&&kmFOk;
-          btn.style.background=S.saved?"#16a34a":canSave?"#facc15":"#444";
-          btn.style.color=canSave?"#111":"#888";
-          btn.style.cursor=canSave?"pointer":"not-allowed";
-          btn.onclick=canSave?saveDay:null;
-        }
-      });
+      if(el) el.addEventListener("input",()=>{ syncBufferFromDOM(); updateCalc(); });
     });
   },0);
 
@@ -547,8 +533,8 @@ function renderAnual() {
   table.append(hdr);
   meses.forEach((m,i)=>{
     const row=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"8px 12px",background:i%2===0?"#1e1e1e":"#232323",fontSize:"13px",borderTop:"1px solid #2a2a2a"}});
-    const fat2025val = parseFloat(m.fat2025)||0;
-    row.append(h("span",{style:{color:"#fff",fontWeight:"600"}},m.mes),h("span",{style:{color:"#4ade80"}},eur(m.fat2026)),h("span",{style:{color:fat2025val>=0?"#4ade80":"#f87171"}},eur(m.fat2025)),h("span",{style:{color:"#facc15"}},Number(m.kms2026).toFixed(0)+" km"));
+    const diff=(parseFloat(m.fat2026)||0)-(parseFloat(m.fat2025)||0);
+    row.append(h("span",{style:{color:"#fff",fontWeight:"600"}},m.mes),h("span",{style:{color:"#4ade80"}},eur(m.fat2026)),h("span",{style:{color:diff>=0?"#4ade80":"#f87171"}},eur(m.fat2025)),h("span",{style:{color:"#facc15"}},Number(m.kms2026).toFixed(0)+" km"));
     table.append(row);
   });
   const totRow=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"10px 12px",background:"#2a2a2a",fontSize:"13px",fontWeight:"700",borderTop:"2px solid #333"}});
@@ -568,87 +554,6 @@ function renderAnual() {
     Object.values(previsao).forEach(p=>{ if(!p.label) return; prevCard.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"8px"}},h("span",{style:{color:"#aaa"}},p.label),h("span",{style:{color:"#c084fc",fontWeight:"700"}},eur(p.valor)))); });
     wrap.append(prevCard);
   }
-
-  // ── PREVISÕES CALCULADAS ──
-  const hoje = today();
-  const anoAtual = hoje.slice(0,4);
-  const mesAtual = hoje.slice(0,7);
-
-  // Todos os registos do ano atual
-  const anoRecs = Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual));
-
-  // KM início do ano — KM Inicial do primeiro dia registado em Janeiro
-  const janRecs = Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual+"-01")).sort((a,b)=>a[0].localeCompare(b[0]));
-  const kmInicioAno = janRecs.length>0 ? (parseFloat(janRecs[0][1].kmInicial)||0) : 0;
-
-  // KM atual da viatura — KM Final do último dia registado
-  const todosOrdenados = Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual)).sort((a,b)=>b[0].localeCompare(a[0]));
-  const kmAtualViatura = todosOrdenados.length>0 ? (parseFloat(todosOrdenados[0][1].kmFinal)||0) : 0;
-
-  // Total KM percorridos até hoje
-  const totalKmAno = anoRecs.reduce((s,[,r])=>{ const kI=parseFloat(r.kmInicial)||0,kF=parseFloat(r.kmFinal)||0; return s+(kF>kI?kF-kI:0); },0);
-
-  // Dias trabalhados no ano (com faturação > 0)
-  const diasTrabAno = anoRecs.filter(([,r])=>(parseFloat(r.valorFaturado)||0)>0).length;
-
-  // Dias do ano e dias passados até hoje
-  const isLeap = (parseInt(anoAtual)%4===0);
-  const diasAno = isLeap ? 366 : 365;
-  const inicioAno = new Date(anoAtual+"-01-01");
-  const hojeDate = new Date(hoje);
-  const diasPassados = Math.floor((hojeDate-inicioAno)/(1000*60*60*24))+1;
-  const diasRestantes = diasAno - diasPassados;
-
-  // Média diária KM (só dias trabalhados)
-  const mediaKmDiaTrab = diasTrabAno>0 ? totalKmAno/diasTrabAno : 0;
-
-  // Previsão KM percorridos no ano (média × dias do ano)
-  const previsaoKmAno = mediaKmDiaTrab * diasAno;
-
-  // Previsão KM viatura no final do ano
-  const previsaoKmViatura = kmInicioAno + previsaoKmAno;
-
-  // Faturação do mês corrente
-  const mesRecs = Object.entries(S.records).filter(([d])=>d.startsWith(mesAtual));
-  const diasTrabMes = mesRecs.filter(([,r])=>(parseFloat(r.valorFaturado)||0)>0).length;
-  const totalFatMes = mesRecs.reduce((s,[,r])=>s+(parseFloat(r.valorFaturado)||0),0);
-  const mediaFatDia = diasTrabMes>0 ? totalFatMes/diasTrabMes : 0;
-
-  // Dias do mês corrente
-  const [anoM, mesM] = mesAtual.split("-").map(Number);
-  const diasMes = new Date(anoM, mesM, 0).getDate();
-
-  // Previsão faturado mês
-  const previsaoFatMes = mediaFatDia * diasMes;
-
-  // Previsão comissão mês (40% + IVA 23%)
-  const previsaoComMes = previsaoFatMes * 0.40 * 1.23;
-
-  function kpiPrev(icon,title,value,sub,color) {
-    return h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"10px",border:`1px solid ${color}33`}},
-      h("div",{style:{fontSize:"11px",color:"#777",marginBottom:"6px"}}),
-      h("div",{style:{fontSize:"11px",color:"#777",marginBottom:"6px"}},icon+" "+title),
-      h("div",{style:{fontWeight:"800",fontSize:"20px",color}},value),
-      sub?h("div",{style:{fontSize:"11px",color:"#666",marginTop:"4px"}},sub):null
-    );
-  }
-
-  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#4ade80",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"🔮 Previsões Calculadas"));
-  const prevCalcCard=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
-
-  const row=(label,valor,color)=>h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"10px",paddingBottom:"10px",borderBottom:"1px solid #2a2a2a"}},
-    h("span",{style:{color:"#aaa",flex:"1"}},label),
-    h("span",{style:{color:color||"#4ade80",fontWeight:"700"}},valor)
-  );
-
-  prevCalcCard.append(
-    row("🛣️ Previsão KM Percorridos no Ano",Number(previsaoKmAno.toFixed(0)).toLocaleString()+" km","#facc15"),
-    row("🔮 KM Viatura Previsto Final do Ano",Number(previsaoKmViatura.toFixed(0)).toLocaleString()+" km","#facc15"),
-    h("div",{style:{height:"8px"}}),
-    row("📅 Previsão Faturado Mês ("+mesAtual+")",eur(previsaoFatMes),"#4ade80"),
-    row("📊 Previsão Comissão Mês ("+mesAtual+")",eur(previsaoComMes),"#c084fc")
-  );
-  wrap.append(prevCalcCard);
 
   if(viatura&&viatura.length>0){
     wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#60a5fa",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"🚕 Viatura"));
