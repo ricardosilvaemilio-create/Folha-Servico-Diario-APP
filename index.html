@@ -519,6 +519,8 @@ function renderAnual() {
 
   // ── Previsões Calculadas ──
   const hojeStr=today(), anoAtual=hojeStr.slice(0,4), mesAtual=hojeStr.slice(0,7);
+  const allEntries=Object.entries(S.records);
+  const anoEntries=allEntries.filter(([d])=>d.startsWith(anoAtual));
   // Total KM do ano vem diretamente da sheet (totais.kms2026)
   const totKmAno = parseFloat(totais.kms2026)||0;
   // KM inicial do 1º dia de Janeiro
