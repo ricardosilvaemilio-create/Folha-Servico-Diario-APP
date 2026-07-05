@@ -567,10 +567,19 @@ function renderAnual() {
   const janRecs=Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual+"-01")).sort((a,b)=>a[0].localeCompare(b[0]));
   const kmInicioAno=janRecs.length>0?(parseFloat(janRecs[0][1].kmInicial)||0):0;
   const totalKmAno=anoRecs.reduce((s,[,r])=>{ const kI=parseFloat(r.kmInicial)||0,kF=parseFloat(r.kmFinal)||0; return s+(kF>kI?kF-kI:0); },0);
-  const diasComKmAno=anoRecs.filter(([,r])=>{ const kI=parseFloat(r.kmInicial)||0,kF=parseFloat(r.kmFinal)||0; return kF>kI; }).length;
+  const janRecs=Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual+"-01")).sort((a,b)=>a[0].localeCompare(b[0]));
+  const kmInicioAno=janRecs.length>0?(parseFloat(janRecs[0][1].kmInicial)||0):0;
   const diasAno=(parseInt(anoAtual)%4===0)?366:365;
-  const mediaKmDia=diasComKmAno>0?totalKmAno/diasComKmAno:0;
-  const previsaoKmAno=mediaKmDia*diasAno;
+  const inicioAno=new Date(anoAtual+"-01-01");
+  const hojeDate=new Date(hoje);
+  const diasDecorridos=Math.floor((hojeDate-inicioAno)/(1000*60*60*24))+1;
+  // Média diária KM = total KM ano / dias decorridos até hoje
+  const mediaKmDia=diasDecorridos>0?totalKmAno/diasDecorridos:0;
+  // Previsão KM ano = média diária × dias do ano (365/366)
+  const previsaoKmAno=Math.round(mediaKmDia*diasAno);
+  // Previsão KM viatura final do ano = KM iniciais 1 Jan + previsão KM ano
+  const previsaoKmViatura=kmInicioAno+previsaoKmAno;
+  const previsaoKmViatura=kmInicioAno+previsaoKmAno;
   const previsaoKmViatura=kmInicioAno+previsaoKmAno;
   const mesRecs=Object.entries(S.records).filter(([d])=>d.startsWith(mesAtual));
   const diasTrabMes=mesRecs.filter(([,r])=>(parseFloat(r.valorFaturado)||0)>0).length;
