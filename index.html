@@ -24,7 +24,7 @@
 <div id="app"></div>
 <div id="modals"></div>
 <script>
-const BACKEND_URL = "https://script.google.com/macros/s/AKfycbzdnp1-e0QtsekAvHu3SW9gQiBEyhuMaYOWjJHPqvr5IP76hc-N83YbzjdRFBE3MmpJ6g/exec";
+const BACKEND_URL = "https://script.google.com/macros/s/AKfycbzhZDNvBju3axWlboozIVcM_szVcbek8l19O1WEUNvcaI4-2MrXSsR0vPahBgWk7tK8/exec";
 const CR = 0.40, IVA = 0.23;
 const CATS = ["Depósito","Extintor","Inspeção","Lavagem","Oficina","Outros"];
 
@@ -184,7 +184,12 @@ function renderHeader() {
     h("span",{style:{fontSize:"28px"}},"🚕"),
     h("div",{style:{flex:"1"}},h("div",{style:{fontWeight:"700",fontSize:"17px",color:"#facc15"}},"Folha de Serviço"),h("div",{style:{fontSize:"11px",color:"#888"}},"Registo Diário de Táxi")),
     h("span",{id:"hdr_spin",class:"spin",style:{fontSize:"16px",display:S.syncing?"inline-block":"none"}},"🔄"),
-    h("button",{style:{background:"none",border:"none",color:"#666",fontSize:"11px",cursor:"pointer"},onclick:()=>{S.ok=false;}},"Sair")
+    h("button",{style:{background:"none",border:"none",color:"#666",fontSize:"11px",cursor:"pointer"},onclick:()=>{
+      if(confirm("Tens a certeza que queres sair e limpar os dados locais?")){
+        S.records={};S.loadedMonths={};S.anual=null;S.tab=0;B=newBuf();
+        render();
+      }
+    }},"Sair")
   );
   hdr.append(top);
   const nav=h("div",{style:{display:"flex"}});
