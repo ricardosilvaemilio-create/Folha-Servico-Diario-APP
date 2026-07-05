@@ -31,7 +31,7 @@ const CATS = ["Depósito","Extintor","Inspeção","Lavagem","Oficina","Outros"];
 let S = {
   url: BACKEND_URL, loading: false, syncing: false, saved: false, err: "",
   records: {}, tab: 0, date: today(), month: today().slice(0,7),
-  loadedMonths: {}, expModal: false, deleteModal: false,
+  loadedMonths: {}, expModal: false, deleteModal: false, viaturaMod: false,
   editExpIdx: null, expForm: {cat:CATS[0],desc:"",val:""},
   anual: null, resumoTab: "mensal"
 };
@@ -175,13 +175,14 @@ function render() {
   root.append(renderNav());
   if(S.deleteModal) mods.append(renderDeleteModal());
   if(S.expModal) mods.append(renderExpModal());
+  if(S.viaturaMod) mods.append(renderViaturaModal());
 }
 
 function renderHeader() {
   const tabs=["Hoje","Histórico","Relatório","Resumo"];
   const hdr=h("div",{style:{background:"#1a1a1a",padding:"16px 16px 0",borderBottom:"1px solid #333",position:"sticky",top:"0",zIndex:"10"}});
   const top=h("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"12px"}},
-    h("span",{style:{fontSize:"28px"}},"🚕"),
+    h("span",{style:{fontSize:"28px",cursor:"pointer"},onclick:()=>{S.viaturaMod=true;render();}},"🚕"),
     h("div",{style:{flex:"1"}},h("div",{style:{fontWeight:"700",fontSize:"17px",color:"#facc15"}},"Folha de Serviço"),h("div",{style:{fontSize:"11px",color:"#888"}},"Registo Diário de Táxi")),
     h("span",{id:"hdr_spin",class:"spin",style:{fontSize:"16px",display:S.syncing?"inline-block":"none"}},"🔄"),
     h("button",{style:{background:"none",border:"none",color:"#666",fontSize:"11px",cursor:"pointer"},onclick:()=>{
@@ -570,6 +571,77 @@ function renderNav() {
     nav.append(h("div",{style:{height:"44px"}}));
   }
   return nav;
+}
+
+function renderViaturaModal() {
+  const MANUT = ["Extintor","Inspeção","Oficina","Outros"];
+
+  // Recolhe todos os registos de manutenção
+  const registos = [];
+  Object.entries(S.records).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([date, day]) => {
+    const kmI = parseFloat(day.kmInicial)||0;
+    (day.expenses||[]).forEach(e => {
+      if(MANUT.includes(e.category)) {
+        registos.push({ date, category: e.category, valor: parseFloat(e.valor)||0, desc: e.desc||"", km: kmI });
+      }
+    });
+  });
+
+  const modal = h("div",{style:{position:"fixed",inset:"0",background:"#000c",display:"flex",alignItems:"flex-end",zIndex:"200"},
+    onclick:e=>{if(e.target===e.currentTarget){S.viaturaMod=false;render();}}},
+    h("div",{style:{background:"#1a1a1a",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:"420px",margin:"0 auto",maxHeight:"85vh",display:"flex",flexDirection:"column"}},
+      // Header
+      h("div",{style:{padding:"20px 20px 12px",borderBottom:"1px solid #333",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+        h("div",{},
+          h("div",{style:{fontWeight:"800",fontSize:"17px",color:"#facc15"}},"🔧 Histórico da Viatura"),
+          h("div",{style:{fontSize:"11px",color:"#666",marginTop:"2px"}},"Extintor · Inspeção · Oficina · Outros")
+        ),
+        h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"12px",cursor:"pointer"},
+          onclick:()=>{S.viaturaMod=false;render();}},"✕ Fechar")
+      ),
+      // Conteúdo
+      h("div",{style:{overflowY:"auto",padding:"16px",flex:"1"}},
+        registos.length===0
+          ? h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Sem registos de manutenção ainda.")
+          : h("div",{},
+              // Resumo
+              h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"16px"}},
+                ...["Extintor","Inspeção","Oficina","Outros"].map(cat=>{
+                  const total=registos.filter(r=>r.category===cat).reduce((s,r)=>s+r.valor,0);
+                  const count=registos.filter(r=>r.category===cat).length;
+                  return count>0?h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"10px 14px"}},
+                    h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"2px"}},cat+" ("+count+"x)"),
+                    h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(total))
+                  ):null;
+                }).filter(Boolean)
+              ),
+              h("div",{style:{fontSize:"11px",color:"#555",marginBottom:"12px",display:"flex",justifyContent:"space-between"}},
+                h("span",{},"Total: "+registos.length+" registos"),
+                h("span",{style:{color:"#f87171",fontWeight:"700"}},"Total gasto: "+eur(registos.reduce((s,r)=>s+r.valor,0)))
+              ),
+              // Lista
+              ...registos.slice().reverse().map(r=>{
+                const colors={Extintor:"#60a5fa",Inspeção:"#4ade80",Oficina:"#f87171",Outros:"#facc15"};
+                const color=colors[r.category]||"#aaa";
+                return h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"12px 14px",marginBottom:"8px",borderLeft:"3px solid "+color}},
+                  h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"4px"}},
+                    h("div",{},
+                      h("div",{style:{fontWeight:"700",fontSize:"13px",color}},"🔧 "+r.category),
+                      r.desc?h("div",{style:{fontSize:"12px",color:"#aaa",marginTop:"2px"}},r.desc):null
+                    ),
+                    h("div",{style:{textAlign:"right"}},
+                      h("div",{style:{fontWeight:"800",fontSize:"15px",color:"#f87171"}},eur(r.valor)),
+                      r.km>0?h("div",{style:{fontSize:"11px",color:"#666",marginTop:"2px"}},r.km.toLocaleString()+" km"):null
+                    )
+                  ),
+                  h("div",{style:{fontSize:"11px",color:"#555"}},"📅 "+r.date)
+                );
+              })
+            )
+      )
+    )
+  );
+  return modal;
 }
 
 function renderDeleteModal() {
