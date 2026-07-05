@@ -430,13 +430,13 @@ function renderResumoMensal() {
   }
   wrap.append(h("div",{style:{fontSize:"11px",color:"#facc15",fontWeight:"700",letterSpacing:"1px",marginBottom:"8px",textTransform:"uppercase"}},"📍 Quilómetros"));
   wrap.append(kpi("🛣️","Média de KM por Dia",(tKm/Math.max(dias,1)).toFixed(1)+" km","Total: "+tKm.toFixed(0)+" km em "+dias+" dias","#facc15"));
-  wrap.append(kpi("💶","Faturado/KM — Dia ("+S.date+")","€"+(Math.round(fatKmDia*100)/100).toFixed(2)+"/km","Faturado ÷ KM do dia selecionado","#60a5fa"));
+  wrap.append(kpi("💶","Faturado/KM — Dia ("+S.date+")","€"+(Math.round(fatKmDia*100)/100).toFixed(2)+"/km","Média KM Dia","#60a5fa"));
   wrap.append(kpi("📈","Faturado/KM — Acumulado Mensal","€"+(tKm>0?(Math.round((tVf/tKm)*100)/100).toFixed(2):"0.00")+"/km","Média KM Mensal","#60a5fa"));
-  wrap.append(kpi("🗓️","Faturado/KM — Acumulado Anual","€"+(Math.round(fatKmAnual*100)/100).toFixed(2)+"/km","Média KM de todos os meses carregados","#a78bfa"));
+  wrap.append(kpi("🗓️","Faturado/KM — Acumulado Anual","€"+(Math.round(fatKmAnual*100)/100).toFixed(2)+"/km","Média KM Ano","#a78bfa"));
   wrap.append(h("div",{style:{fontSize:"11px",color:"#f87171",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"⛽ Combustível"));
   wrap.append(kpi("⛽","Custo por 100 km","€"+(tKm>0?(Math.round((tC/tKm)*100*100)/100).toFixed(2):"0.00")+"/100km",eur(tC)+" gastos · "+tKm.toFixed(0)+" km","#f87171"));
   wrap.append(h("div",{style:{fontSize:"11px",color:"#c084fc",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"📊 Comissão"));
-  wrap.append(kpi("🧾","Total IVA da Comissão",eur(tIva),"Base: "+eur(tComB)+" · IVA: "+eur(tIva),"#c084fc"));
+  wrap.append(kpi("🧾","Comissão do Motorista",eur(tComB),"IVA (23%): "+eur(tIva)+" · Total c/ IVA: "+eur(tCom),"#c084fc"));
   wrap.append(h("div",{style:{fontSize:"11px",color:"#4ade80",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"💰 Valor a Entregar"));
   const card=h("div",{style:{background:tEntr>=0?"#1a2e1a":"#2e1a1a",border:`1px solid ${tEntr>=0?"#4ade80":"#f87171"}55`,borderRadius:"14px",padding:"18px",marginBottom:"10px"}});
   const lines=h("div",{style:{display:"flex",flexDirection:"column",gap:"6px",marginBottom:"14px"}});
