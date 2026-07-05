@@ -514,18 +514,16 @@ function renderAnual() {
 
   // ── Previsões Calculadas ──
   const hojeStr=today(), anoAtual=hojeStr.slice(0,4), mesAtual=hojeStr.slice(0,7);
-  const allEntries=Object.entries(S.records);
-  const anoEntries=allEntries.filter(([d])=>d.startsWith(anoAtual));
-  // Total KM percorridos no ano
-  const totKmAno=anoEntries.reduce((s,[,r])=>{const a=parseFloat(r.kmInicial)||0,b=parseFloat(r.kmFinal)||0;return s+(b>a?b-a:0);},0);
+  // Total KM do ano vem diretamente da sheet (totais.kms2026)
+  const totKmAno = parseFloat(totais.kms2026)||0;
   // KM inicial do 1º dia de Janeiro
-  const janEntries=anoEntries.filter(([d])=>d.startsWith(anoAtual+"-01")).sort((a,b)=>a[0].localeCompare(b[0]));
+  const janEntries=Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual+"-01")).sort((a,b)=>a[0].localeCompare(b[0]));
   const kmJan1=janEntries.length>0?(parseFloat(janEntries[0][1].kmInicial)||0):0;
   // Dias decorridos desde 1 Janeiro até hoje
   const dIni=new Date(anoAtual+"-01-01"), dHoje=new Date(hojeStr);
   const diasDecorridos=Math.floor((dHoje-dIni)/(1000*60*60*24))+1;
   const diasAno=(parseInt(anoAtual)%4===0)?366:365;
-  // Média KM diária = total KM ano / dias decorridos
+  // Média KM diária = total KM ano (da sheet) / dias decorridos
   const mediaKmDia=diasDecorridos>0?totKmAno/diasDecorridos:0;
   // Previsão KM percorridos no ano = média × 365
   const prevKmAno=Math.round(mediaKmDia*diasAno);
