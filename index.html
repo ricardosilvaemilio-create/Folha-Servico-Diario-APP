@@ -593,23 +593,13 @@ function renderViaturaModal() {
     onclick:e=>{if(e.target===e.currentTarget){S.viaturaMod=false;render();}}},
     h("div",{style:{background:"#1a1a1a",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:"420px",maxHeight:"85vh",display:"flex",flexDirection:"column"}},
       // Header
-              h("div",{style:{padding:"20px 20px 12px",borderBottom:"1px solid #333",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+      h("div",{style:{padding:"20px 20px 12px",borderBottom:"1px solid #333",display:"flex",justifyContent:"space-between",alignItems:"center"}},
         h("div",{},
           h("div",{style:{fontWeight:"800",fontSize:"17px",color:"#facc15"}},"🔧 Histórico da Viatura"),
           h("div",{style:{fontSize:"11px",color:"#666",marginTop:"2px"}},"Extintor · Inspeção · Oficina · Outros")
         ),
-        h("div",{style:{display:"flex",gap:"8px"}},
-          h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"12px",cursor:"pointer"},
-            onclick:async()=>{
-              // Força recarregamento de todos os meses já carregados
-              const meses=Object.keys(S.loadedMonths);
-              S.loadedMonths={};
-              for(const m of meses){ await loadMonth(m); }
-              render();
-            }},"🔄"),
-          h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"12px",cursor:"pointer"},
-            onclick:()=>{S.viaturaMod=false;render();}},"✕ Fechar")
-        )
+        h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"12px",cursor:"pointer"},
+          onclick:()=>{S.viaturaMod=false;render();}},"✕ Fechar")
       ),
       // Conteúdo
       h("div",{style:{overflowY:"auto",padding:"16px",flex:"1"}},
