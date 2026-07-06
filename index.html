@@ -589,9 +589,9 @@ function renderViaturaModal() {
     });
   });
 
-  const modal = h("div",{style:{position:"fixed",inset:"0",background:"#000c",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:"200"},
+  const modal = h("div",{style:{position:"fixed",inset:"0",background:"#000c",display:"flex",alignItems:"flex-end",zIndex:"200"},
     onclick:e=>{if(e.target===e.currentTarget){S.viaturaMod=false;render();}}},
-    h("div",{style:{background:"#1a1a1a",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:"420px",maxHeight:"85vh",display:"flex",flexDirection:"column"}},
+    h("div",{style:{background:"#1a1a1a",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:"420px",margin:"0 auto",maxHeight:"85vh",display:"flex",flexDirection:"column"}},
       // Header
       h("div",{style:{padding:"20px 20px 12px",borderBottom:"1px solid #333",display:"flex",justifyContent:"space-between",alignItems:"center"}},
         h("div",{},
