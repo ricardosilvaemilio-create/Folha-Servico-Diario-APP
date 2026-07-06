@@ -363,10 +363,10 @@ function renderRelatorio() {
     return {km:a.km+c.tkm,fat:a.fat+c.fat,mb:a.mb+c.mb,din:a.din+c.din,desp:a.desp+c.outras+c.comb+c.port,com:a.com+c.com,entr:a.entr+c.entr,dias:a.dias+worked,dep:a.dep+dep};
   },{km:0,fat:0,mb:0,din:0,desp:0,com:0,entr:0,dias:0,dep:0});
   const grid=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"12px"}});
-  [["Dias Trabalhados",st.dias+" dias","#facc15"],["KM Totais",fkm(st.km),"#facc15"],
+  [   ["Dias Trabalhados",st.dias+" dias","#facc15"],["KM Totais",fkm(st.km),"#facc15"],
    ["Total Faturado",eur(st.fat),"#4ade80"],["Multibanco",eur(st.mb),"#60a5fa"],
    ["Dinheiro",eur(st.din),"#60a5fa"],["Despesas",eur(st.desp),"#f87171"],
-   ["Depósitos",eur(st.dep),"#60a5fa"],["Comissões",eur(st.com),"#c084fc"]].forEach(([l,v,c])=>
+   ["Depósitos",eur(st.dep),"#60a5fa"],["Comissão Motorista",eur(st.com),"#c084fc"]].forEach(([l,v,c])=>
     grid.append(h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"12px 14px"}},
       h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},l),
       h("div",{style:{fontWeight:"700",fontSize:"16px",color:c}},v)
