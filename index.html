@@ -423,8 +423,10 @@ function renderResumoMensal() {
   const sTkm=sKmF>sKmI?sKmF-sKmI:0, sFat=parseFloat(selDay.valorFaturado)||0;
   const fatKmDia=sTkm>0?sFat/sTkm:0;
   const arVals=Object.values(S.records);
-  const arTKm=arVals.reduce((s,r)=>{const a=parseFloat(r.kmInicial)||0,b=parseFloat(r.kmFinal)||0;return s+(b>a?b-a:0);},0);
-  const arTFat=arVals.reduce((s,r)=>s+(parseFloat(r.valorFaturado)||0),0);
+  const anoAtualStr=today().slice(0,4);
+  const arValsAno=Object.entries(S.records).filter(([d])=>d.startsWith(anoAtualStr)).map(([,r])=>r);
+  const arTKm=arValsAno.reduce((s,r)=>{const a=parseFloat(r.kmInicial)||0,b=parseFloat(r.kmFinal)||0;return s+(b>a?b-a:0);},0);
+  const arTFat=arValsAno.reduce((s,r)=>s+(parseFloat(r.valorFaturado)||0),0);
   const fatKmAnual=arTKm>0?arTFat/arTKm:0;
 
   function kpi(icon,title,value,sub,color){
