@@ -387,12 +387,17 @@ function renderRelatorio() {
   [["Dias Trabalhados",st.dias+" dias","#facc15"],["KM Totais",fkm(st.km),"#facc15"],
    ["Total Faturado",eur(st.fat),"#4ade80"],["Multibanco",eur(st.mb),"#60a5fa"],
    ["Dinheiro",eur(st.din),"#60a5fa"],["Despesas",eur(st.desp),"#f87171"],
-   ["Depósitos",eur(st.dep),"#60a5fa"],["Comissão Motorista",eur(st.com),"#c084fc"]].forEach(([l,v,c])=>
+   ["Depósitos",eur(st.dep),"#60a5fa"]].forEach(([l,v,c])=>
     grid.append(h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"12px 14px"}},
       h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},l),
       h("div",{style:{fontWeight:"700",fontSize:"16px",color:c}},v)
     ))
   );
+  grid.append(h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"12px 14px"}},
+    h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},"Comissão Motorista"),
+    h("div",{style:{fontWeight:"700",fontSize:"16px",color:"#c084fc"}},eur(st.com)),
+    h("div",{style:{fontSize:"10px",color:"#666",marginTop:"4px"}},"(inclui IVA 23%)")
+  ));
   wrap.append(grid);
   wrap.append(h("div",{style:{background:"linear-gradient(135deg,#1a2e1a,#1e1e1e)",border:"1px solid #4ade8044",borderRadius:"12px",padding:"16px"}},
     h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
