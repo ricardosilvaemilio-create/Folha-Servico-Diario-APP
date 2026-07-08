@@ -58,9 +58,32 @@ function calc(b) {
   return {tkm,fat,mb,port,comb,outras,dep,comB,ivaV,com,entr,din:fat-mb};
 }
 function syncDOM() {
-  const g=id=>{const e=document.getElementById(id);return e?e.value:"";};
-  B.kmI=g("f_kmI");B.kmF=g("f_kmF");B.fat=g("f_fat");
-  B.mb=g("f_mb");B.port=g("f_port");B.comb=g("f_comb");B.obs=g("f_obs");
+
+  const txt = id => {
+    const e = document.getElementById(id);
+    return e ? e.value : "";
+  };
+
+  const num = id => {
+    const e = document.getElementById(id);
+    if (!e || e.value === "") return 0;
+
+    return Number(
+      e.value
+        .replace(/\./g, "")
+        .replace(",", ".")
+    );
+  };
+
+  B.kmI = num("f_kmI");
+  B.kmF = num("f_kmF");
+
+  B.fat = num("f_fat");
+  B.mb = num("f_mb");
+  B.port = num("f_port");
+  B.comb = num("f_comb");
+
+  B.obs = txt("f_obs");
 }
 function canSave() {
   const a=document.getElementById("f_kmI"), b=document.getElementById("f_kmF");
