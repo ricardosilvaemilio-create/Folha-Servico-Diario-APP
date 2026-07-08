@@ -708,28 +708,31 @@ function renderExpModal() {
 }
 
 // --- LOGIN ---
-const LOGIN_KEY = "fsd_session";
-const LOGIN_HASH = "7d4e9f2a1b3c8e6d"; // hash simples de "cr4"
-function hashSimples(str){ let h=0;for(let i=0;i<str.length;i++){h=((h<<5)-h)+str.charCodeAt(i);h|=0;}return Math.abs(h).toString(16); }
+const LOGIN_KEY = "fsd_auth";
+const LOGIN_PW = "cr4";
 function sessaoValida(){
   try{
     const s=JSON.parse(localStorage.getItem(LOGIN_KEY)||"null");
-    if(!s)return false;
+    if(!s||s.pw!==LOGIN_PW)return false;
     if(s.expiry&&Date.now()>s.expiry){localStorage.removeItem(LOGIN_KEY);return false;}
-    return s.auth===LOGIN_HASH;
+    return true;
   }catch(e){return false;}
+}
+function mostrarApp(){
+  document.getElementById("login-screen").style.display="none";
+  document.getElementById("app").style.display="";
+  render();
+  loadMonth(S.date.slice(0,7)).then(()=>{B=initBuf(S.date);render();});
 }
 function tentarLogin(){
   const pw=document.getElementById("login-input").value;
   const err=document.getElementById("login-err");
-  if(hashSimples(pw)===hashSimples("cr4")){
+  if(pw===LOGIN_PW){
     const lembrar=document.getElementById("login-lembrar").checked;
-    const session={auth:LOGIN_HASH,expiry:lembrar?Date.now()+7*24*60*60*1000:null};
-    if(lembrar)localStorage.setItem(LOGIN_KEY,JSON.stringify(session));
-    document.getElementById("login-screen").style.display="none";
-    document.getElementById("app").style.display="";
-    render();
-    loadMonth(S.date.slice(0,7)).then(()=>{B=initBuf(S.date);render();});
+    if(lembrar){
+      localStorage.setItem(LOGIN_KEY,JSON.stringify({pw:LOGIN_PW,expiry:Date.now()+7*24*60*60*1000}));
+    }
+    mostrarApp();
   } else {
     err.textContent="Password incorreta. Tenta novamente.";
     document.getElementById("login-input").value="";
@@ -739,13 +742,8 @@ function tentarLogin(){
 document.addEventListener("DOMContentLoaded",()=>{
   const inp=document.getElementById("login-input");
   if(inp)inp.addEventListener("keydown",e=>{if(e.key==="Enter")tentarLogin();});
+  if(sessaoValida()){mostrarApp();}
 });
-if(sessaoValida()){
-  document.getElementById("login-screen").style.display="none";
-  document.getElementById("app").style.display="";
-  render();
-  loadMonth(S.date.slice(0,7)).then(()=>{B=initBuf(S.date);render();});
-}
 </script>
 </body>
 </html>
