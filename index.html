@@ -399,6 +399,16 @@ function renderResumo() {
 
 function renderResumoMensal() {
   const wrap=h("div",{});
+
+  // Carrega todos os meses do ano corrente automaticamente para o cálculo anual
+  const anoAtualStr=today().slice(0,4);
+  const mesAtualStr=today().slice(0,7);
+  const mesesAno=["01","02","03","04","05","06","07","08","09","10","11","12"];
+  mesesAno.forEach(m=>{
+    const mes=anoAtualStr+"-"+m;
+    if(!S.loadedMonths[mes]) loadMonth(mes);
+  });
+
   wrap.append(h("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"20px"}},
     h("span",{style:{fontSize:"13px",color:"#aaa"}},"Mês:"),
     h("input",{type:"month",value:S.month,style:{background:"#222",border:"1px solid #444",color:"#fff",borderRadius:"8px",padding:"4px 10px",fontSize:"13px"},
