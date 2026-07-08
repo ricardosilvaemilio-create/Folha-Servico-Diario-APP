@@ -63,41 +63,41 @@ function syncDOM() {
   B.mb=g("f_mb");B.port=g("f_port");B.comb=g("f_comb");B.obs=g("f_obs");
 }
 function canSave() {
-  const a=document.getElementById("f_kmI"), b=document.getElementById("f_kmF");
-  const vi=a?a.value:(B.kmI||""), vf=b?b.value:(B.kmF||"");
+  const a=document.getElementById("f_kmI"),b=document.getElementById("f_kmF");
+  const vi=a?a.value:(B.kmI||""),vf=b?b.value:(B.kmF||"");
   return vi.toString().trim()!==""&&parseFloat(vi)>0&&vf.toString().trim()!==""&&parseFloat(vf)>0;
 }
 
 async function apiGet(action,params={}) {
-  const u=new URL(S.url); u.searchParams.set("action",action);
-  for(const k in params) u.searchParams.set(k,params[k]);
+  const u=new URL(S.url);u.searchParams.set("action",action);
+  for(const k in params)u.searchParams.set(k,params[k]);
   return (await fetch(u.toString())).json();
 }
 async function apiPost(body) {
   return (await fetch(S.url,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(body)})).json();
 }
 async function loadMonth(m) {
-  if(S.loadedMonths[m]) return;
-  S.loading=true; S.err=""; render();
+  if(S.loadedMonths[m])return;
+  S.loading=true;S.err="";render();
   try {
     const d=await apiGet("getMonth",{month:m});
-    if(d.error) throw new Error(d.error);
+    if(d.error)throw new Error(d.error);
     (d.days||[]).forEach(r=>{S.records[r.date]={kmInicial:r.kmInicial,kmFinal:r.kmFinal,valorFaturado:r.valorFaturado,multibanco:r.multibanco,portagens:r.portagens,combustivel:r.combustivel,obs:r.obs||"",expenses:r.expenses||[]};});
     S.loadedMonths[m]=true;
-  } catch(e){S.err="Erro: "+e.message;}
-  S.loading=false; render();
+  }catch(e){S.err="Erro: "+e.message;}
+  S.loading=false;render();
 }
 function getPrevKm(date) {
   const dates=Object.keys(S.records).sort((a,b)=>a.localeCompare(b));
   const idx=dates.indexOf(date);
-  if(idx>0) return parseFloat(getDay(dates[idx-1]).kmFinal)||0;
-  const prev=new Date(date); prev.setDate(prev.getDate()-1);
+  if(idx>0)return parseFloat(getDay(dates[idx-1]).kmFinal)||0;
+  const prev=new Date(date);prev.setDate(prev.getDate()-1);
   return parseFloat((S.records[prev.toISOString().split("T")[0]]||{}).kmFinal)||0;
 }
 function initBuf(date) {
-  const day=getDay(date), buf=newBuf(day);
+  const day=getDay(date),buf=newBuf(day);
   if((!buf.kmI||parseFloat(buf.kmI)===0)&&!day.kmInicial){
-    const p=getPrevKm(date); if(p>0) buf.kmI=p.toString();
+    const p=getPrevKm(date);if(p>0)buf.kmI=p.toString();
   }
   return buf;
 }
@@ -105,20 +105,20 @@ async function saveDay() {
   syncDOM();
   const date=S.date;
   S.records[date]={kmInicial:B.kmI,kmFinal:B.kmF,valorFaturado:B.fat,multibanco:B.mb,portagens:B.port,combustivel:B.comb,obs:B.obs,expenses:JSON.parse(JSON.stringify(B.exps))};
-  S.syncing=true; S.err=""; updateStatus();
+  S.syncing=true;S.err="";updateStatus();
   try {
     await apiPost({action:"saveDay",data:date,day:{kmInicial:B.kmI,kmFinal:B.kmF,valorFaturado:B.fat,multibanco:B.mb,portagens:B.port,combustivel:B.comb,obs:B.obs,expenses:B.exps}});
-    S.saved=true; S.syncing=false; updateStatus();
+    S.saved=true;S.syncing=false;updateStatus();
     setTimeout(()=>{S.saved=false;updateStatus();},2000);
-  } catch(e){S.err="Falha: "+e.message;S.syncing=false;updateStatus();}
+  }catch(e){S.err="Falha: "+e.message;S.syncing=false;updateStatus();}
 }
 async function deleteDayFn() {
-  S.syncing=true; updateStatus();
+  S.syncing=true;updateStatus();
   try {
     await apiPost({action:"deleteDay",data:S.date});
-    delete S.records[S.date]; B=newBuf();
-  } catch(e){S.err="Falha: "+e.message;}
-  S.syncing=false; S.deleteModal=false; render();
+    delete S.records[S.date];B=newBuf();
+  }catch(e){S.err="Falha: "+e.message;}
+  S.syncing=false;S.deleteModal=false;render();
 }
 function updateStatus() {
   const can=canSave();
@@ -126,7 +126,7 @@ function updateStatus() {
   const spin=document.getElementById("hdr_spin");
   const errEl=document.getElementById("err_bar");
   if(btn){btn.textContent=S.saved?"✅ Guardado!":"💾 Gravar Dia";btn.style.background=S.saved?"#16a34a":can?"#facc15":"#444";btn.style.color=can?"#111":"#888";btn.style.cursor=can?"pointer":"not-allowed";btn.onclick=can?saveDay:null;}
-  if(spin) spin.style.display=S.syncing?"inline-block":"none";
+  if(spin)spin.style.display=S.syncing?"inline-block":"none";
   if(errEl){errEl.textContent=S.err?"⚠️ "+S.err:"";errEl.style.display=S.err?"block":"none";}
   updateCalc();
 }
@@ -149,9 +149,9 @@ function updateCalc() {
 function h(tag,attrs,...kids) {
   const e=document.createElement(tag);
   for(const k in (attrs||{})){
-    if(k==="style") Object.assign(e.style,attrs[k]);
-    else if(k==="class") e.className=attrs[k];
-    else if(k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(),attrs[k]);
+    if(k==="style")Object.assign(e.style,attrs[k]);
+    else if(k==="class")e.className=attrs[k];
+    else if(k.startsWith("on"))e.addEventListener(k.slice(2).toLowerCase(),attrs[k]);
     else e.setAttribute(k,attrs[k]);
   }
   kids.flat().forEach(c=>{if(c!=null)e.append(c instanceof Node?c:document.createTextNode(String(c)));});
@@ -159,23 +159,23 @@ function h(tag,attrs,...kids) {
 }
 
 function render() {
-  const root=document.getElementById("app"), mods=document.getElementById("modals");
-  root.innerHTML=""; mods.innerHTML="";
+  const root=document.getElementById("app"),mods=document.getElementById("modals");
+  root.innerHTML="";mods.innerHTML="";
   root.append(renderHeader());
   root.append(h("div",{id:"err_bar",style:{margin:"10px 16px 0",background:"#2e1a1a",border:"1px solid #f8717155",borderRadius:"10px",padding:"8px 12px",fontSize:"11px",color:"#f87171",display:S.err?"block":"none"}},"⚠️ "+(S.err||"")));
   if(S.loading){root.append(h("div",{style:{textAlign:"center",padding:"60px",color:"#888"}},"A carregar..."));}
   else{
     const c=h("div",{style:{padding:"16px"}});
-    if(S.tab===0) c.append(renderHoje());
-    else if(S.tab===1) c.append(renderHistorico());
-    else if(S.tab===2) c.append(renderRelatorio());
+    if(S.tab===0)c.append(renderHoje());
+    else if(S.tab===1)c.append(renderHistorico());
+    else if(S.tab===2)c.append(renderRelatorio());
     else c.append(renderResumo());
     root.append(c);
   }
   root.append(renderNav());
-  if(S.deleteModal) mods.append(renderDeleteModal());
-  if(S.expModal) mods.append(renderExpModal());
-  if(S.viaturaMod) mods.append(renderViaturaModal());
+  if(S.deleteModal)mods.append(renderDeleteModal());
+  if(S.expModal)mods.append(renderExpModal());
+  if(S.viaturaMod)mods.append(renderViaturaModal());
 }
 
 function renderHeader() {
@@ -186,10 +186,7 @@ function renderHeader() {
     h("div",{style:{flex:"1"}},h("div",{style:{fontWeight:"700",fontSize:"17px",color:"#facc15"}},"Folha de Serviço"),h("div",{style:{fontSize:"11px",color:"#888"}},"Registo Diário de Táxi")),
     h("span",{id:"hdr_spin",class:"spin",style:{fontSize:"16px",display:S.syncing?"inline-block":"none"}},"🔄"),
     h("button",{style:{background:"none",border:"none",color:"#666",fontSize:"11px",cursor:"pointer"},onclick:()=>{
-      if(confirm("Tens a certeza que queres sair e limpar os dados locais?")){
-        S.records={};S.loadedMonths={};S.anual=null;S.tab=0;B=newBuf();
-        render();
-      }
+      if(confirm("Tens a certeza que queres sair?")){S.records={};S.loadedMonths={};S.anual=null;S.tab=0;B=newBuf();render();}
     }},"Sair")
   );
   hdr.append(top);
@@ -198,23 +195,23 @@ function renderHeader() {
     style:{flex:"1",padding:"10px 0",fontSize:"13px",fontWeight:"600",background:"none",border:"none",cursor:"pointer",color:S.tab===i?"#facc15":"#888",borderBottom:S.tab===i?"2px solid #facc15":"2px solid transparent"},
     onclick:()=>{if(S.tab!==i){syncDOM();S.tab=i;render();}}
   },t)));
-  hdr.append(nav); return hdr;
+  hdr.append(nav);return hdr;
 }
 
 function mkField(label,id,value,ph) {
   const w=document.createElement("div");
   const s=document.createElement("span");s.className="lbl";s.textContent=label;
   const inp=document.createElement("input");inp.type="number";inp.id=id;inp.className="inp";inp.placeholder=ph;inp.value=value||"";
-  w.append(s,inp); return w;
+  w.append(s,inp);return w;
 }
 
 function renderHoje() {
-  const d=S.date, b=B, c=calc(b);
+  const d=S.date,b=B,c=calc(b);
   const wrap=h("div",{});
   function prevKmLocal(){
     const dates=Object.keys(S.records).sort((a,b)=>a.localeCompare(b));
     const idx=dates.indexOf(d);
-    if(idx>0) return parseFloat(getDay(dates[idx-1]).kmFinal)||0;
+    if(idx>0)return parseFloat(getDay(dates[idx-1]).kmFinal)||0;
     const prev=new Date(d);prev.setDate(prev.getDate()-1);
     return parseFloat((S.records[prev.toISOString().split("T")[0]]||{}).kmFinal)||0;
   }
@@ -225,9 +222,8 @@ function renderHoje() {
     h("button",{style:{marginLeft:"auto",background:"#333",border:"none",borderRadius:"8px",padding:"5px 10px",color:"#aaa",fontSize:"13px",cursor:"pointer"},
       onclick:async()=>{S.loadedMonths[S.date.slice(0,7)]=false;await loadMonth(S.date.slice(0,7));B=initBuf(S.date);render();}},"🔄")
   );
-  if(S.records[d]) dateRow.append(h("button",{style:{background:"#7f1d1d",border:"none",borderRadius:"8px",padding:"5px 12px",color:"#fca5a5",fontSize:"12px",fontWeight:"700",cursor:"pointer"},onclick:()=>{S.deleteModal=true;render();}},"🗑️"));
+  if(S.records[d])dateRow.append(h("button",{style:{background:"#7f1d1d",border:"none",borderRadius:"8px",padding:"5px 12px",color:"#fca5a5",fontSize:"12px",fontWeight:"700",cursor:"pointer"},onclick:()=>{S.deleteModal=true;render();}},"🗑️"));
   wrap.append(dateRow);
-
   wrap.append(h("div",{class:"card"},
     h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#facc15",fontSize:"14px"}},"📍 Quilómetros"),
     h("div",{class:"grid2",style:{marginBottom:"10px"}},mkField("KM Inicial","f_kmI",b.kmI,"0"),mkField("KM Final","f_kmF",b.kmF,"0")),
@@ -238,7 +234,7 @@ function renderHoje() {
           if(p>0){B.kmI=p.toString();B.kmF=p.toString();
             const a=document.getElementById("f_kmI"),b=document.getElementById("f_kmF");
             if(a)a.value=p;if(b)b.value=p;updateCalc();updateStatus();
-          } else {S.err="KM final do dia anterior não encontrado.";updateStatus();}
+          }else{S.err="KM final do dia anterior não encontrado.";updateStatus();}
         }},"🛌 Folga")
     ),
     h("div",{style:{background:"#facc1520",borderRadius:"8px",padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
@@ -246,7 +242,6 @@ function renderHoje() {
       h("span",{id:"c_tkm",style:{color:"#facc15",fontWeight:"800",fontSize:"20px"}},fkm(c.tkm))
     )
   ));
-
   wrap.append(h("div",{class:"card"},
     h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#4ade80",fontSize:"14px"}},"💶 Faturação"),
     h("div",{style:{marginBottom:"10px"}},mkField("Valor Total Faturado (€)","f_fat",b.fat,"0.00")),
@@ -256,12 +251,10 @@ function renderHoje() {
       h("span",{id:"c_din",style:{color:"#4ade80",fontWeight:"700",fontSize:"16px"}},eur(c.din))
     )
   ));
-
   wrap.append(h("div",{class:"card"},
     h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#fb923c",fontSize:"14px"}},"⛽ Combustível & Portagens"),
     h("div",{class:"grid2"},mkField("Combustível (€)","f_comb",b.comb,"0.00"),mkField("Portagens (€)","f_port",b.port,"0.00"))
   ));
-
   const dc=h("div",{class:"card"},
     h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}},
       h("div",{style:{fontWeight:"700",color:"#f87171",fontSize:"14px"}},"🧾 Outras Despesas"),
@@ -270,7 +263,7 @@ function renderHoje() {
     )
   );
   const exps=b.exps||[];
-  if(!exps.length) dc.append(h("div",{style:{textAlign:"center",color:"#555",fontSize:"13px",padding:"12px 0"}},"Sem despesas extra"));
+  if(!exps.length)dc.append(h("div",{style:{textAlign:"center",color:"#555",fontSize:"13px",padding:"12px 0"}},"Sem despesas extra"));
   exps.forEach((e,i)=>dc.append(h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#2a2a2a",borderRadius:"8px",padding:"8px 12px",marginBottom:"6px"}},
     h("div",{},h("div",{style:{fontSize:"13px",fontWeight:"600"}},e.category),e.desc?h("div",{style:{fontSize:"11px",color:"#888"}},e.desc):null),
     h("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
@@ -280,12 +273,10 @@ function renderHoje() {
     )
   )));
   wrap.append(dc);
-
   wrap.append(h("div",{class:"card"},
     h("div",{style:{fontWeight:"700",marginBottom:"10px",color:"#94a3b8",fontSize:"14px"}},"📝 Observações"),
     h("input",{id:"f_obs",class:"inp",placeholder:"Notas sobre o dia (opcional)",value:b.obs||"",style:{fontSize:"14px"}})
   ));
-
   wrap.append(h("div",{class:"card"},
     h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#c084fc",fontSize:"14px"}},"📊 Comissão"),
     h("div",{id:"c_comB",style:{fontSize:"13px",color:"#aaa",marginBottom:"6px"}},"Base (40% de "+eur(c.fat)+"): "+eur(c.comB)),
@@ -295,7 +286,6 @@ function renderHoje() {
       h("span",{style:{color:"#c084fc"}},"Total Comissão c/ IVA"),h("span",{id:"c_com",style:{color:"#c084fc"}},eur(c.com))
     )
   ));
-
   wrap.append(h("div",{style:{background:"linear-gradient(135deg,#1a2e1a,#1e1e1e)",border:"1px solid #4ade8044",borderRadius:"12px",padding:"16px"}},
     h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#4ade80",fontSize:"14px"}},"✅ Valor a Entregar"),
     h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Faturado"),h("span",{id:"c_fat_r",style:{color:"#4ade80"}},"+ "+eur(c.fat))),
@@ -310,11 +300,10 @@ function renderHoje() {
       h("span",{id:"c_entr",style:{fontWeight:"800",fontSize:"24px",color:c.entr>=0?"#4ade80":"#f87171"}},eur(c.entr))
     )
   ));
-
   setTimeout(()=>{
     ["f_kmI","f_kmF","f_fat","f_mb","f_port","f_comb"].forEach(id=>{
       const el=document.getElementById(id);
-      if(el) el.addEventListener("input",()=>{syncDOM();updateCalc();updateStatus();});
+      if(el)el.addEventListener("input",()=>{syncDOM();updateCalc();updateStatus();});
     });
   },0);
   return wrap;
@@ -330,7 +319,7 @@ function renderHistorico() {
   const dates=Object.keys(S.records).sort((a,b)=>a.localeCompare(b));
   if(!dates.length){wrap.append(h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Nenhum registo carregado."));return wrap;}
   dates.forEach(d=>{
-    const c=calc(newBuf(getDay(d))), isT=d===today();
+    const c=calc(newBuf(getDay(d))),isT=d===today();
     wrap.append(h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"14px",marginBottom:"10px",cursor:"pointer",border:isT?"1px solid #facc1566":"1px solid transparent"},
       onclick:()=>{syncDOM();B=initBuf(d);S.date=d;S.tab=0;render();}},
       h("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"8px"}},
@@ -358,12 +347,12 @@ function renderRelatorio() {
   const mD=Object.keys(S.records).filter(d=>d.startsWith(S.month));
   if(!mD.length){wrap.append(h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Sem registos. Clica em 🔄"));return wrap;}
   const st=mD.reduce((a,d)=>{
-    const c=calc(newBuf(getDay(d))), worked=c.fat>0?1:0;
+    const c=calc(newBuf(getDay(d))),worked=c.fat>0?1:0;
     const dep=(getDay(d).expenses||[]).filter(e=>e.category==="Depósito").reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
     return {km:a.km+c.tkm,fat:a.fat+c.fat,mb:a.mb+c.mb,din:a.din+c.din,desp:a.desp+c.outras+c.comb+c.port,com:a.com+c.com,entr:a.entr+c.entr,dias:a.dias+worked,dep:a.dep+dep};
   },{km:0,fat:0,mb:0,din:0,desp:0,com:0,entr:0,dias:0,dep:0});
   const grid=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"12px"}});
-  [   ["Dias Trabalhados",st.dias+" dias","#facc15"],["KM Totais",fkm(st.km),"#facc15"],
+  [["Dias Trabalhados",st.dias+" dias","#facc15"],["KM Totais",fkm(st.km),"#facc15"],
    ["Total Faturado",eur(st.fat),"#4ade80"],["Multibanco",eur(st.mb),"#60a5fa"],
    ["Dinheiro",eur(st.din),"#60a5fa"],["Despesas",eur(st.desp),"#f87171"],
    ["Depósitos",eur(st.dep),"#60a5fa"],["Comissão Motorista",eur(st.com),"#c084fc"]].forEach(([l,v,c])=>
@@ -392,14 +381,13 @@ function renderResumo() {
     onclick:()=>{S.resumoTab=t;render();}
   },t==="mensal"?"📈 Mensal":"📅 Anual")));
   wrap.append(sel);
-  if(S.resumoTab==="mensal") wrap.append(renderResumoMensal());
+  if(S.resumoTab==="mensal")wrap.append(renderResumoMensal());
   else wrap.append(renderAnual());
   return wrap;
 }
 
 function renderResumoMensal() {
   const wrap=h("div",{});
-
   wrap.append(h("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"20px"}},
     h("span",{style:{fontSize:"13px",color:"#aaa"}},"Mês:"),
     h("input",{type:"month",value:S.month,style:{background:"#222",border:"1px solid #444",color:"#fff",borderRadius:"8px",padding:"4px 10px",fontSize:"13px"},
@@ -407,8 +395,8 @@ function renderResumoMensal() {
     h("button",{style:{marginLeft:"auto",background:"#333",border:"none",borderRadius:"8px",padding:"6px 10px",color:"#4ade80",fontSize:"11px",cursor:"pointer",fontWeight:"700"},
       onclick:async()=>{
         const ano=today().slice(0,4);
-        S.loadedMonths={};
         for(const m of ["01","02","03","04","05","06","07","08","09","10","11","12"]){
+          S.loadedMonths[ano+"-"+m]=false;
           await loadMonth(ano+"-"+m);
         }
         render();
@@ -417,24 +405,22 @@ function renderResumoMensal() {
   const mD=Object.keys(S.records).filter(d=>d.startsWith(S.month));
   if(!mD.length){wrap.append(h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Sem registos para este mês."));return wrap;}
   const ds=mD.map(d=>calc(newBuf(getDay(d))));
-  const tKm=ds.reduce((s,d)=>s+d.tkm,0), tVf=ds.reduce((s,d)=>s+d.fat,0), tMb=ds.reduce((s,d)=>s+d.mb,0);
-  const tC=ds.reduce((s,d)=>s+d.comb,0), tP=ds.reduce((s,d)=>s+d.port,0);
-  const tIva=ds.reduce((s,d)=>s+d.ivaV,0), tComB=ds.reduce((s,d)=>s+d.comB,0), tCom=ds.reduce((s,d)=>s+d.com,0);
+  const tKm=ds.reduce((s,d)=>s+d.tkm,0),tVf=ds.reduce((s,d)=>s+d.fat,0),tMb=ds.reduce((s,d)=>s+d.mb,0);
+  const tC=ds.reduce((s,d)=>s+d.comb,0),tP=ds.reduce((s,d)=>s+d.port,0);
+  const tIva=ds.reduce((s,d)=>s+d.ivaV,0),tComB=ds.reduce((s,d)=>s+d.comB,0),tCom=ds.reduce((s,d)=>s+d.com,0);
   const dias=ds.filter(d=>d.fat>0).length;
   const cats={};let tDep=0;
   mD.forEach(d=>(getDay(d).expenses||[]).forEach(e=>{
-    if(e.category==="Depósito") tDep+=(parseFloat(e.valor)||0);
+    if(e.category==="Depósito")tDep+=(parseFloat(e.valor)||0);
     else cats[e.category]=(cats[e.category]||0)+(parseFloat(e.valor)||0);
   }));
   const tOut=Object.values(cats).reduce((s,v)=>s+v,0);
   const tEntr=tVf-tCom-tC+tP-tOut-tDep-tMb;
   const selDay=getDay(S.date);
-  const sKmI=parseFloat(selDay.kmInicial)||0, sKmF=parseFloat(selDay.kmFinal)||0;
-  const sTkm=sKmF>sKmI?sKmF-sKmI:0, sFat=parseFloat(selDay.valorFaturado)||0;
+  const sKmI=parseFloat(selDay.kmInicial)||0,sKmF=parseFloat(selDay.kmFinal)||0;
+  const sTkm=sKmF>sKmI?sKmF-sKmI:0,sFat=parseFloat(selDay.valorFaturado)||0;
   const fatKmDia=sTkm>0?sFat/sTkm:0;
-  const arVals=Object.values(S.records);
-  const anoAtualStr=today().slice(0,4);
-  const arValsAno=Object.entries(S.records).filter(([d])=>d.startsWith(anoAtualStr)).map(([,r])=>r);
+  const arValsAno=Object.entries(S.records).filter(([d])=>d.startsWith(today().slice(0,4))).map(([,r])=>r);
   const arTKm=arValsAno.reduce((s,r)=>{const a=parseFloat(r.kmInicial)||0,b=parseFloat(r.kmFinal)||0;return s+(b>a?b-a:0);},0);
   const arTFat=arValsAno.reduce((s,r)=>s+(parseFloat(r.valorFaturado)||0),0);
   const fatKmAnual=arTKm>0?arTFat/arTKm:0;
@@ -463,14 +449,14 @@ function renderResumoMensal() {
   lines.append(lr("📊 Comissão c/ IVA",eur(tCom),"#c084fc","−"));
   lines.append(lr("⛽ Combustível",eur(tC),"#f87171","−"));
   lines.append(lr("💳 Multibanco",eur(tMb),"#60a5fa","−"));
-  if(tDep>0) lines.append(lr("🏦 Depósito Bancário",eur(tDep),"#60a5fa","−"));
+  if(tDep>0)lines.append(lr("🏦 Depósito Bancário",eur(tDep),"#60a5fa","−"));
   const ce=Object.entries(cats).sort((a,b)=>b[1]-a[1]);
   if(ce.length){
     lines.append(h("div",{style:{fontSize:"11px",color:"#666",margin:"6px 0 2px",fontWeight:"600",textTransform:"uppercase"}},"🧾 Outras Despesas"));
     ce.forEach(([cat,val])=>lines.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",paddingLeft:"12px"}},h("span",{style:{color:"#888"}},"· "+cat),h("span",{style:{color:"#f87171",fontWeight:"600"}},"− "+eur(val)))));
-    if(ce.length>1) lines.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"12px",paddingLeft:"12px",marginTop:"2px"}},h("span",{style:{color:"#666"}},"Total outras"),h("span",{style:{color:"#f87171"}},"− "+eur(tOut))));
+    if(ce.length>1)lines.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"12px",paddingLeft:"12px",marginTop:"2px"}},h("span",{style:{color:"#666"}},"Total outras"),h("span",{style:{color:"#f87171"}},"− "+eur(tOut))));
   }
-  if(tP>0) lines.append(lr("🛣️ Portagens (cliente)",eur(tP),"#4ade80","+"));
+  if(tP>0)lines.append(lr("🛣️ Portagens (cliente)",eur(tP),"#4ade80","+"));
   card.append(lines);
   card.append(h("div",{style:{height:"1px",background:"#333",marginBottom:"14px"}}));
   card.append(h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
@@ -490,11 +476,9 @@ function renderAnual() {
   }
   if(S.anual.error){wrap.append(h("div",{style:{color:"#f87171",padding:"20px"}},S.anual.error));return wrap;}
   const {meses,totais,previsao,viatura}=S.anual;
-
   wrap.append(h("div",{style:{display:"flex",justifyContent:"flex-end",marginBottom:"12px"}},
     h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"11px",cursor:"pointer"},onclick:()=>{S.anual=null;render();}},"🔄 Atualizar")
   ));
-
   wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#facc15",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"💶 Faturação Mensal"));
   const table=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",overflow:"hidden",marginBottom:"16px"}});
   const hdr=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"8px 12px",background:"#2a2a2a",fontSize:"11px",color:"#666",fontWeight:"700"}});
@@ -508,48 +492,38 @@ function renderAnual() {
   });
   const totRow=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"10px 12px",background:"#2a2a2a",fontSize:"13px",fontWeight:"700",borderTop:"2px solid #333"}});
   totRow.append(h("span",{style:{color:"#facc15"}},"Total"),h("span",{style:{color:"#4ade80"}},eur(totais.fat2026)),h("span",{style:{color:"#aaa"}},eur(totais.fat2025)),h("span",{style:{color:"#facc15"}},Number(totais.kms2026).toFixed(0)+" km"));
-  table.append(totRow); wrap.append(table);
-
+  table.append(totRow);wrap.append(table);
   wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#f87171",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"⛽ Combustível"));
   const cg=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"16px"}});
-  meses.forEach(m=>{if(parseFloat(m.comb2026)>0) cg.append(h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"10px 14px"}},h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},m.mes),h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(m.comb2026))));});
+  meses.forEach(m=>{if(parseFloat(m.comb2026)>0)cg.append(h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"10px 14px"}},h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},m.mes),h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(m.comb2026))));});
   cg.append(h("div",{style:{background:"#2e1a1a",borderRadius:"10px",padding:"10px 14px",border:"1px solid #f8717133"}},h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},"Total"),h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(totais.comb2026))));
   wrap.append(cg);
-
   if(previsao&&Object.keys(previsao).length>0){
     wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#c084fc",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"📈 Previsão do Ano"));
     const pc=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
     Object.values(previsao).forEach(p=>{if(!p.label)return;pc.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"8px"}},h("span",{style:{color:"#aaa"}},p.label),h("span",{style:{color:"#c084fc",fontWeight:"700"}},eur(p.valor))));});
     wrap.append(pc);
   }
-
   if(viatura&&viatura.length>0){
     wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#60a5fa",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"🚕 Viatura"));
     const vc=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
     viatura.forEach(v=>{if(!v.label)return;vc.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"8px"}},h("span",{style:{color:"#aaa"}},v.label),h("span",{style:{color:"#60a5fa",fontWeight:"700"}},typeof v.valor==="number"&&String(v.label).toLowerCase().includes("km")?Number(v.valor).toFixed(0)+" km":eur(v.valor))));});
     wrap.append(vc);
   }
-
-  // ── Previsões Calculadas ──
-  const hojeStr=today(), anoAtual=hojeStr.slice(0,4), mesAtual=hojeStr.slice(0,7);
+  const hojeStr=today(),anoAtual=hojeStr.slice(0,4),mesAtual=hojeStr.slice(0,7);
   const allEntries=Object.entries(S.records);
   const anoEntries=allEntries.filter(([d])=>d.startsWith(anoAtual));
-  // Total KM do ano vem diretamente da sheet (totais.kms2026)
-  const totKmAno = parseFloat(totais.kms2026)||0;
-  // KM inicial do 1º dia de Janeiro
-  const janEntries=Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual+"-01")).sort((a,b)=>a[0].localeCompare(b[0]));
-  const kmJan1=janEntries.length>0?(parseFloat(janEntries[0][1].kmInicial)||0):0;
-  // Dias decorridos desde 1 Janeiro até hoje
-  const dIni=new Date(anoAtual+"-01-01"), dHoje=new Date(hojeStr);
+  const totKmAno=parseFloat(totais.kms2026)||0;
+  const janRecsAnual=anoEntries.filter(([d])=>d.startsWith(anoAtual+"-01")).sort((a,b)=>a[0].localeCompare(b[0]));
+  let kmJan1=0;
+  for(const [,r] of janRecsAnual){const v=parseFloat(r.kmInicial)||0;if(v>0){kmJan1=v;break;}}
+  if(kmJan1===0)kmJan1=parseFloat(totais.kmInicioAno)||0;
+  const dIni=new Date(anoAtual+"-01-01"),dHoje=new Date(hojeStr);
   const diasDecorridos=Math.floor((dHoje-dIni)/(1000*60*60*24))+1;
   const diasAno=(parseInt(anoAtual)%4===0)?366:365;
-  // Média KM diária = total KM ano (da sheet) / dias decorridos
   const mediaKmDia=diasDecorridos>0?totKmAno/diasDecorridos:0;
-  // Previsão KM percorridos no ano = média × 365
   const prevKmAno=Math.round(mediaKmDia*diasAno);
-  // Previsão KM viatura final do ano = KM Jan 1 + previsão KM ano
   const prevKmViatura=kmJan1+prevKmAno;
-  // Previsão faturado mês
   const mesEntries=allEntries.filter(([d])=>d.startsWith(mesAtual));
   const diasTrabMes=mesEntries.filter(([,r])=>(parseFloat(r.valorFaturado)||0)>0).length;
   const totFatMes=mesEntries.reduce((s,[,r])=>s+(parseFloat(r.valorFaturado)||0),0);
@@ -558,7 +532,6 @@ function renderAnual() {
   const diasMes=new Date(aM,mM,0).getDate();
   const prevFatMes=mediaFatDia*diasMes;
   const prevComMes=prevFatMes*0.40*1.23;
-
   wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#4ade80",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"🔮 Previsões Calculadas"));
   const pcc=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
   const prow=(label,valor,color)=>h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"10px",paddingBottom:"10px",borderBottom:"1px solid #2a2a2a"}},
@@ -579,88 +552,67 @@ function renderNav() {
   if(S.tab===0){
     const can=canSave();
     nav.append(h("button",{id:"btn_save",style:{width:"100%",padding:"13px",background:S.saved?"#16a34a":can?"#facc15":"#444",border:"none",borderRadius:"12px",color:can?"#111":"#888",fontWeight:"800",fontSize:"15px",cursor:can?"pointer":"not-allowed"},onclick:can?saveDay:null},S.saved?"✅ Guardado!":"💾 Gravar Dia"));
-  } else {
+  }else{
     nav.append(h("div",{style:{height:"44px"}}));
   }
   return nav;
 }
 
 function renderViaturaModal() {
-  const MANUT = ["Extintor","Inspeção","Oficina","Outros"];
-
-  // Recolhe todos os registos de manutenção
-  const registos = [];
-  Object.entries(S.records).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([date, day]) => {
-    const kmI = parseFloat(day.kmInicial)||0;
-    (day.expenses||[]).forEach(e => {
-      if(MANUT.includes(e.category)) {
-        registos.push({ date, category: e.category, valor: parseFloat(e.valor)||0, desc: e.desc||"", km: kmI });
-      }
+  const MANUT=["Extintor","Inspeção","Oficina","Outros"];
+  const registos=[];
+  Object.entries(S.records).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([date,day])=>{
+    const kmI=parseFloat(day.kmInicial)||0;
+    (day.expenses||[]).forEach(e=>{
+      if(MANUT.includes(e.category))registos.push({date,category:e.category,valor:parseFloat(e.valor)||0,desc:e.desc||"",km:kmI});
     });
   });
-
-  const modal = h("div",{style:{position:"fixed",inset:"0",background:"#000c",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:"200"},
+  const modal=h("div",{style:{position:"fixed",inset:"0",background:"#000c",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:"200"},
     onclick:e=>{if(e.target===e.currentTarget){S.viaturaMod=false;render();}}},
     h("div",{style:{background:"#1a1a1a",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:"420px",maxHeight:"85vh",display:"flex",flexDirection:"column"}},
-      // Header
-              h("div",{style:{padding:"20px 20px 12px",borderBottom:"1px solid #333",display:"flex",justifyContent:"space-between",alignItems:"center"}},
-        h("div",{},
-          h("div",{style:{fontWeight:"800",fontSize:"17px",color:"#facc15"}},"🔧 Histórico da Viatura"),
-          h("div",{style:{fontSize:"11px",color:"#666",marginTop:"2px"}},"Extintor · Inspeção · Oficina · Outros")
-        ),
+      h("div",{style:{padding:"20px 20px 12px",borderBottom:"1px solid #333",display:"flex",justifyContent:"space-between",alignItems:"center"}},
+        h("div",{},h("div",{style:{fontWeight:"800",fontSize:"17px",color:"#facc15"}},"🔧 Histórico da Viatura"),h("div",{style:{fontSize:"11px",color:"#666",marginTop:"2px"}},"Extintor · Inspeção · Oficina · Outros")),
         h("div",{style:{display:"flex",gap:"8px"}},
           h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"12px",cursor:"pointer"},
             onclick:async()=>{
-              // Carrega todos os meses do ano corrente
               const ano=today().slice(0,4);
-              const meses=["01","02","03","04","05","06","07","08","09","10","11","12"];
               S.loadedMonths={};
-              for(const m of meses){ await loadMonth(ano+"-"+m); }
+              for(const m of ["01","02","03","04","05","06","07","08","09","10","11","12"]){await loadMonth(ano+"-"+m);}
               render();
             }},"🔄"),
-          h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"12px",cursor:"pointer"},
-            onclick:()=>{S.viaturaMod=false;render();}},"✕ Fechar")
+          h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"12px",cursor:"pointer"},onclick:()=>{S.viaturaMod=false;render();}},"✕ Fechar")
         )
       ),
-      // Conteúdo
       h("div",{style:{overflowY:"auto",padding:"16px",flex:"1"}},
         registos.length===0
-          ? h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Sem registos de manutenção ainda.")
-          : h("div",{},
-              // Resumo
-              h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"16px"}},
-                ...["Extintor","Inspeção","Oficina","Outros"].map(cat=>{
-                  const total=registos.filter(r=>r.category===cat).reduce((s,r)=>s+r.valor,0);
-                  const count=registos.filter(r=>r.category===cat).length;
-                  return count>0?h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"10px 14px"}},
-                    h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"2px"}},cat+" ("+count+"x)"),
-                    h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(total))
-                  ):null;
-                }).filter(Boolean)
-              ),
-              h("div",{style:{fontSize:"11px",color:"#555",marginBottom:"12px",display:"flex",justifyContent:"space-between"}},
-                h("span",{},"Total: "+registos.length+" registos"),
-                h("span",{style:{color:"#f87171",fontWeight:"700"}},"Total gasto: "+eur(registos.reduce((s,r)=>s+r.valor,0)))
-              ),
-              // Lista
-              ...registos.slice().reverse().map(r=>{
-                const colors={Extintor:"#60a5fa",Inspeção:"#4ade80",Oficina:"#f87171",Outros:"#facc15"};
-                const color=colors[r.category]||"#aaa";
-                return h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"12px 14px",marginBottom:"8px",borderLeft:"3px solid "+color}},
-                  h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"4px"}},
-                    h("div",{},
-                      h("div",{style:{fontWeight:"700",fontSize:"13px",color}},"🔧 "+r.category),
-                      r.desc?h("div",{style:{fontSize:"12px",color:"#aaa",marginTop:"2px"}},r.desc):null
-                    ),
-                    h("div",{style:{textAlign:"right"}},
-                      h("div",{style:{fontWeight:"800",fontSize:"15px",color:"#f87171"}},eur(r.valor)),
-                      r.km>0?h("div",{style:{fontSize:"11px",color:"#666",marginTop:"2px"}},r.km.toLocaleString()+" km"):null
-                    )
-                  ),
-                  h("div",{style:{fontSize:"11px",color:"#555"}},"📅 "+r.date)
-                );
-              })
-            )
+          ?h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Sem registos de manutenção ainda.")
+          :h("div",{},
+            h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"16px"}},
+              ...["Extintor","Inspeção","Oficina","Outros"].map(cat=>{
+                const total=registos.filter(r=>r.category===cat).reduce((s,r)=>s+r.valor,0);
+                const count=registos.filter(r=>r.category===cat).length;
+                return count>0?h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"10px 14px"}},
+                  h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"2px"}},cat+" ("+count+"x)"),
+                  h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(total))
+                ):null;
+              }).filter(Boolean)
+            ),
+            h("div",{style:{fontSize:"11px",color:"#555",marginBottom:"12px",display:"flex",justifyContent:"space-between"}},
+              h("span",{},"Total: "+registos.length+" registos"),
+              h("span",{style:{color:"#f87171",fontWeight:"700"}},"Total gasto: "+eur(registos.reduce((s,r)=>s+r.valor,0)))
+            ),
+            ...registos.slice().reverse().map(r=>{
+              const colors={Extintor:"#60a5fa",Inspeção:"#4ade80",Oficina:"#f87171",Outros:"#facc15"};
+              const color=colors[r.category]||"#aaa";
+              return h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"12px 14px",marginBottom:"8px",borderLeft:"3px solid "+color}},
+                h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"4px"}},
+                  h("div",{},h("div",{style:{fontWeight:"700",fontSize:"13px",color}},"🔧 "+r.category),r.desc?h("div",{style:{fontSize:"12px",color:"#aaa",marginTop:"2px"}},r.desc):null),
+                  h("div",{style:{textAlign:"right"}},h("div",{style:{fontWeight:"800",fontSize:"15px",color:"#f87171"}},eur(r.valor)),r.km>0?h("div",{style:{fontSize:"11px",color:"#666",marginTop:"2px"}},r.km.toLocaleString()+" km"):null)
+                ),
+                h("div",{style:{fontSize:"11px",color:"#555"}},"📅 "+r.date)
+              );
+            })
+          )
       )
     )
   );
@@ -703,7 +655,7 @@ function renderExpModal() {
           onclick:()=>{
             if(!S.expForm.val)return;
             const exp={category:S.expForm.cat,desc:S.expForm.desc,valor:S.expForm.val};
-            if(S.editExpIdx!==null) B.exps[S.editExpIdx]=exp;
+            if(S.editExpIdx!==null)B.exps[S.editExpIdx]=exp;
             else B.exps.push(exp);
             S.expModal=false;render();
           }},S.editExpIdx!==null?"Guardar":"Adicionar")
@@ -712,7 +664,6 @@ function renderExpModal() {
   );
 }
 
-// Inicializa
 render();
 loadMonth(S.date.slice(0,7)).then(()=>{B=initBuf(S.date);render();});
 </script>
