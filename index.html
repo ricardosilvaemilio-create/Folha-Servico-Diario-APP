@@ -132,10 +132,17 @@ async function saveDay() {
   S.records[date]={kmInicial:B.kmI,kmFinal:B.kmF,valorFaturado:B.fat,multibanco:B.mb,portagens:B.port,combustivel:B.comb,obs:B.obs,expenses:JSON.parse(JSON.stringify(B.exps))};
   S.syncing=true;S.err="";updateStatus();
   try {
-    await apiPost({action:"saveDay",data:date,day:{kmInicial:B.kmI,kmFinal:B.kmF,valorFaturado:B.fat,multibanco:B.mb,portagens:B.port,combustivel:B.comb,obs:B.obs,expenses:B.exps}});
+    const c=calc(B);
+    const emailData={
+      date,kmI:B.kmI,kmF:B.kmF,tkm:c.tkm,
+      fat:eur(c.fat),din:eur(c.din),mb:eur(c.mb),
+      comB:eur(c.comB),ivaV:eur(c.ivaV),com:eur(c.com),
+      comb:eur(c.comb),port:eur(c.port),outras:eur(c.outras),dep:eur(c.dep),
+      entr:eur(c.entr),obs:B.obs||""
+    };
+    await apiPost({action:"saveDay",data:date,day:{kmInicial:B.kmI,kmFinal:B.kmF,valorFaturado:B.fat,multibanco:B.mb,portagens:B.port,combustivel:B.comb,obs:B.obs,expenses:B.exps},emailData});
     S.saved=true;S.syncing=false;updateStatus();
     setTimeout(()=>{S.saved=false;updateStatus();},2000);
-    enviarEmailDia(date, B, calc(B));
     // Verificar se é o último dia do mês
     const [_y,_m,_d]=date.split("-").map(Number);
     const ultimoDia=new Date(_y,_m,0).getDate();
