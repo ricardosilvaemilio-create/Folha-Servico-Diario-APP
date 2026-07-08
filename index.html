@@ -211,7 +211,14 @@ function renderHeader() {
     h("div",{style:{flex:"1"}},h("div",{style:{fontWeight:"700",fontSize:"17px",color:"#facc15"}},"Folha de Serviço"),h("div",{style:{fontSize:"11px",color:"#888"}},"Registo Diário de Táxi")),
     h("span",{id:"hdr_spin",class:"spin",style:{fontSize:"16px",display:S.syncing?"inline-block":"none"}},"🔄"),
     h("button",{style:{background:"none",border:"none",color:"#666",fontSize:"11px",cursor:"pointer"},onclick:()=>{
-      if(confirm("Tens a certeza que queres sair?")){S.records={};S.loadedMonths={};S.anual=null;S.tab=0;B=newBuf();render();}
+      if(confirm("Tens a certeza que queres sair?")){
+        localStorage.removeItem(LOGIN_KEY);
+        S.records={};S.loadedMonths={};S.anual=null;S.tab=0;B=newBuf();
+        document.getElementById("app").style.display="none";
+        document.getElementById("login-screen").style.display="flex";
+        document.getElementById("login-input").value="";
+        document.getElementById("login-err").textContent="";
+      }
     }},"Sair")
   );
   hdr.append(top);
