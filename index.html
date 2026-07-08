@@ -1,710 +1,320 @@
-<!DOCTYPE html>
-<html lang="pt">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Folha de Serviço Diário - Táxi</title>
-<style>
-  * { box-sizing: border-box; }
-  body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #111; color: #fff; }
-  #app { max-width: 420px; margin: 0 auto; min-height: 100vh; padding-bottom: 80px; }
-  input, button { font-family: inherit; }
-  ::placeholder { color: #555; }
-  .inp { background:#2a2a2a; color:#fff; border:1px solid #444; border-radius:8px; padding:8px 12px; width:100%; font-size:15px; outline:none; }
-  .inp:focus { border-color:#facc15; }
-  .card { background:#1e1e1e; border-radius:12px; padding:16px; margin-bottom:12px; }
-  .lbl { font-size:11px; color:#888; display:block; margin-bottom:4px; }
-  .grid2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  .row { display:flex; justify-content:space-between; align-items:center; font-size:13px; margin-bottom:6px; }
-  .spin { animation:spin 1s linear infinite; display:inline-block; }
-  @keyframes spin { to { transform:rotate(360deg); } }
-</style>
-</head>
-<body>
-<div id="app"></div>
-<div id="modals"></div>
-<script>
-const BACKEND_URL = "https://script.google.com/macros/s/AKfycbxneL-oZ7UXtoO9Z9hlM6iZQE4BNFubuAy2tY7BV29kMc0YEE7EqGNTEyk9WiCBbheuzQ/exec";
-const CR = 0.40, IVA = 0.23;
-const CATS = ["Depósito","Extintor","Inspeção","Lavagem","Oficina","Outros"];
+/**
+ * BACKEND - Folha de Serviço Diário Táxi
+ * Adaptado à estrutura real da sheet "Folha_de_Servico_Taxi"
+ *
+ * ESTRUTURA: um separador (tab) por mês, ex: "Julho 2026"
+ * Colunas: Data | Kms Iniciais | Kms Finais | Kms Percorridos | Faturado |
+ *          Comissão | Combustível | Multibanco | Portagens | Outras Despesas |
+ *          Tipo | Obs | Entregar | IVA
+ *
+ * COMO INSTALAR:
+ * 1. Abre a tua Google Sheet
+ * 2. Menu: Extensões > Apps Script
+ * 3. Apaga o código que lá está e cola TODO este ficheiro
+ * 4. Clica em "Implementar" > "Nova implementação"
+ * 5. Tipo: "App da Web"
+ * 6. Executar como: "Eu"
+ * 7. Quem tem acesso: "Qualquer pessoa"
+ * 8. Clica em "Implementar" e AUTORIZA
+ * 9. Copia o URL e cola na app web
+ */
 
-let S = {
-  url: BACKEND_URL, loading: false, syncing: false, saved: false, err: "",
-  records: {}, tab: 0, date: today(), month: today().slice(0,7),
-  loadedMonths: {}, expModal: false, deleteModal: false, viaturaMod: false,
-  editExpIdx: null, expForm: {cat:CATS[0],desc:"",val:""},
-  anual: null, resumoTab: "mensal"
+const COMMISSION_RATE = 0.40;
+const IVA_RATE = 0.23;
+
+const COLS = {
+  data: 1, kmsIniciais: 2, kmsFinais: 3, kmsPercorridos: 4,
+  faturado: 5, comissao: 6, combustivel: 7, multibanco: 8,
+  portagens: 9, outrasDespesas: 10, tipo: 11, obs: 12,
+  entregar: 13, iva: 14
 };
-let B = newBuf();
 
-function today() { return new Date().toISOString().split("T")[0]; }
-function eur(v) { return "€"+Number(v||0).toFixed(2); }
-function fkm(v) { return Number(v||0).toFixed(0)+" km"; }
-function newBuf(d) {
-  d=d||{};
-  return {kmI:d.kmInicial||"",kmF:d.kmFinal||"",fat:d.valorFaturado||"",
-    mb:d.multibanco||"",port:d.portagens||"",comb:d.combustivel||"",
-    obs:d.obs||"",exps:JSON.parse(JSON.stringify(d.expenses||[]))};
-}
-function getDay(d) { return S.records[d]||{}; }
-function calc(b) {
-  const kmI=parseFloat(b.kmI)||0, kmF=parseFloat(b.kmF)||0, tkm=kmF>kmI?kmF-kmI:0;
-  const fat=parseFloat(b.fat)||0, mb=parseFloat(b.mb)||0;
-  const port=parseFloat(b.port)||0, comb=parseFloat(b.comb)||0;
-  const dep=(b.exps||[]).filter(e=>e.category==="Depósito").reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
-  const outras=(b.exps||[]).filter(e=>e.category!=="Depósito").reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
-  const comB=fat*CR, ivaV=comB*IVA, com=comB+ivaV;
-  const entr=fat-com-comb+port-outras-dep-mb;
-  return {tkm,fat,mb,port,comb,outras,dep,comB,ivaV,com,entr,din:fat-mb};
-}
-function syncDOM() {
-  const g=id=>{const e=document.getElementById(id);return e?e.value:"";};
-  B.kmI=g("f_kmI");B.kmF=g("f_kmF");B.fat=g("f_fat");
-  B.mb=g("f_mb");B.port=g("f_port");B.comb=g("f_comb");B.obs=g("f_obs");
-}
-function canSave() {
-  const a=document.getElementById("f_kmI"), b=document.getElementById("f_kmF");
-  const vi=a?a.value:(B.kmI||""), vf=b?b.value:(B.kmF||"");
-  return vi.toString().trim()!==""&&parseFloat(vi)>0&&vf.toString().trim()!==""&&parseFloat(vf)>0;
+const HEADERS = ["Data","Kms Iniciais","Kms Finais","Kms Percorridos","Faturado","Comissão",
+  "Combustível","Multibanco","Portagens","Outras Despesas","Tipo","Obs","Entregar","IVA"];
+
+const MESES_PT = ["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+
+function sheetNameForDate_(dateStr) {
+  const [y, m] = dateStr.split("-");
+  return MESES_PT[parseInt(m, 10) - 1] + " " + y;
 }
 
-async function apiGet(action,params={}) {
-  const u=new URL(S.url); u.searchParams.set("action",action);
-  for(const k in params) u.searchParams.set(k,params[k]);
-  return (await fetch(u.toString())).json();
+function getOrCreateMonthSheet_(dateStr) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const name = sheetNameForDate_(dateStr);
+  let sheet = ss.getSheetByName(name);
+  if (!sheet) {
+    sheet = ss.insertSheet(name);
+    sheet.appendRow(HEADERS);
+    sheet.setFrozenRows(1);
+  }
+  return sheet;
 }
-async function apiPost(body) {
-  return (await fetch(S.url,{method:"POST",headers:{"Content-Type":"text/plain"},body:JSON.stringify(body)})).json();
+
+function formatDate_(value) {
+  if (!value) return "";
+  if (value instanceof Date) {
+    return Utilities.formatDate(value, Session.getScriptTimeZone(), "yyyy-MM-dd");
+  }
+  const s = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  if (/^\d{4}\/\d{2}\/\d{2}$/.test(s)) return s.replace(/\//g, "-");
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(s)) {
+    const [d, m, y] = s.split("/");
+    return `${y}-${m}-${d}`;
+  }
+  if (/^\d{2}-\d{2}-\d{4}$/.test(s)) {
+    const [d, m, y] = s.split("-");
+    return `${y}-${m}-${d}`;
+  }
+  return "";
 }
-async function loadMonth(m) {
-  if(S.loadedMonths[m]) return;
-  S.loading=true; S.err=""; render();
+
+function findMainRowForDate_(sheet, dateStr) {
+  const data = sheet.getDataRange().getValues();
+  for (let i = 1; i < data.length; i++) {
+    const cellDate = formatDate_(data[i][0]);
+    if (cellDate === dateStr) return i + 1;
+  }
+  return -1;
+}
+
+function doGet(e) {
   try {
-    const d=await apiGet("getMonth",{month:m});
-    if(d.error) throw new Error(d.error);
-    (d.days||[]).forEach(r=>{S.records[r.date]={kmInicial:r.kmInicial,kmFinal:r.kmFinal,valorFaturado:r.valorFaturado,multibanco:r.multibanco,portagens:r.portagens,combustivel:r.combustivel,obs:r.obs||"",expenses:r.expenses||[]};});
-    S.loadedMonths[m]=true;
-  } catch(e){S.err="Erro: "+e.message;}
-  S.loading=false; render();
-}
-function getPrevKm(date) {
-  const dates=Object.keys(S.records).sort((a,b)=>a.localeCompare(b));
-  const idx=dates.indexOf(date);
-  if(idx>0) return parseFloat(getDay(dates[idx-1]).kmFinal)||0;
-  const prev=new Date(date); prev.setDate(prev.getDate()-1);
-  return parseFloat((S.records[prev.toISOString().split("T")[0]]||{}).kmFinal)||0;
-}
-function initBuf(date) {
-  const day=getDay(date), buf=newBuf(day);
-  if((!buf.kmI||parseFloat(buf.kmI)===0)&&!day.kmInicial){
-    const p=getPrevKm(date); if(p>0) buf.kmI=p.toString();
+    const action = e.parameter.action;
+    if (action === "getAll") return jsonResponse_(getAllData_());
+    if (action === "getMonth") return jsonResponse_(getMonthData_(e.parameter.month));
+    if (action === "getAnual") return jsonResponse_(getAnualData_());
+    return jsonResponse_({ error: "Ação desconhecida" });
+  } catch (err) {
+    return jsonResponse_({ error: err.toString() });
   }
-  return buf;
-}
-async function saveDay() {
-  syncDOM();
-  const date=S.date;
-  S.records[date]={kmInicial:B.kmI,kmFinal:B.kmF,valorFaturado:B.fat,multibanco:B.mb,portagens:B.port,combustivel:B.comb,obs:B.obs,expenses:JSON.parse(JSON.stringify(B.exps))};
-  S.syncing=true; S.err=""; updateStatus();
-  try {
-    await apiPost({action:"saveDay",data:date,day:{kmInicial:B.kmI,kmFinal:B.kmF,valorFaturado:B.fat,multibanco:B.mb,portagens:B.port,combustivel:B.comb,obs:B.obs,expenses:B.exps}});
-    S.saved=true; S.syncing=false; updateStatus();
-    setTimeout(()=>{S.saved=false;updateStatus();},2000);
-  } catch(e){S.err="Falha: "+e.message;S.syncing=false;updateStatus();}
-}
-async function deleteDayFn() {
-  S.syncing=true; updateStatus();
-  try {
-    await apiPost({action:"deleteDay",data:S.date});
-    delete S.records[S.date]; B=newBuf();
-  } catch(e){S.err="Falha: "+e.message;}
-  S.syncing=false; S.deleteModal=false; render();
-}
-function updateStatus() {
-  const can=canSave();
-  const btn=document.getElementById("btn_save");
-  const spin=document.getElementById("hdr_spin");
-  const errEl=document.getElementById("err_bar");
-  if(btn){btn.textContent=S.saved?"✅ Guardado!":"💾 Gravar Dia";btn.style.background=S.saved?"#16a34a":can?"#facc15":"#444";btn.style.color=can?"#111":"#888";btn.style.cursor=can?"pointer":"not-allowed";btn.onclick=can?saveDay:null;}
-  if(spin) spin.style.display=S.syncing?"inline-block":"none";
-  if(errEl){errEl.textContent=S.err?"⚠️ "+S.err:"";errEl.style.display=S.err?"block":"none";}
-  updateCalc();
-}
-function updateCalc() {
-  const g=id=>{const e=document.getElementById(id);return e?e.value:"";};
-  const b={kmI:g("f_kmI"),kmF:g("f_kmF"),fat:g("f_fat"),mb:g("f_mb"),port:g("f_port"),comb:g("f_comb"),exps:B.exps};
-  const c=calc(b);
-  const set=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
-  set("c_tkm",fkm(c.tkm));set("c_din",eur(c.din));
-  set("c_comB","Base (40% de "+eur(c.fat)+"): "+eur(c.comB));
-  set("c_iva","IVA (23%): "+eur(c.ivaV));
-  set("c_com",eur(c.com));
-  set("c_fat_r","+ "+eur(c.fat));set("c_com_r","− "+eur(c.com));
-  set("c_comb_r","− "+eur(c.comb));set("c_port_r","+ "+eur(c.port));
-  set("c_outras_r","− "+eur(c.outras));set("c_dep_r","− "+eur(c.dep));set("c_mb_r","− "+eur(c.mb));
-  set("c_entr",eur(c.entr));
-  const el=document.getElementById("c_entr");if(el)el.style.color=c.entr>=0?"#4ade80":"#f87171";
 }
 
-function h(tag,attrs,...kids) {
-  const e=document.createElement(tag);
-  for(const k in (attrs||{})){
-    if(k==="style") Object.assign(e.style,attrs[k]);
-    else if(k==="class") e.className=attrs[k];
-    else if(k.startsWith("on")) e.addEventListener(k.slice(2).toLowerCase(),attrs[k]);
-    else e.setAttribute(k,attrs[k]);
-  }
-  kids.flat().forEach(c=>{if(c!=null)e.append(c instanceof Node?c:document.createTextNode(String(c)));});
-  return e;
-}
+// ── LER RESUMO ANUAL ──
+function getAnualData_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName("Resumo Anual");
+  if (!sheet) return { error: "Folha 'Resumo Anual' não encontrada" };
 
-function render() {
-  const root=document.getElementById("app"), mods=document.getElementById("modals");
-  root.innerHTML=""; mods.innerHTML="";
-  root.append(renderHeader());
-  root.append(h("div",{id:"err_bar",style:{margin:"10px 16px 0",background:"#2e1a1a",border:"1px solid #f8717155",borderRadius:"10px",padding:"8px 12px",fontSize:"11px",color:"#f87171",display:S.err?"block":"none"}},"⚠️ "+(S.err||"")));
-  if(S.loading){root.append(h("div",{style:{textAlign:"center",padding:"60px",color:"#888"}},"A carregar..."));}
-  else{
-    const c=h("div",{style:{padding:"16px"}});
-    if(S.tab===0) c.append(renderHoje());
-    else if(S.tab===1) c.append(renderHistorico());
-    else if(S.tab===2) c.append(renderRelatorio());
-    else c.append(renderResumo());
-    root.append(c);
-  }
-  root.append(renderNav());
-  if(S.deleteModal) mods.append(renderDeleteModal());
-  if(S.expModal) mods.append(renderExpModal());
-  if(S.viaturaMod) mods.append(renderViaturaModal());
-}
+  const data = sheet.getDataRange().getValues();
 
-function renderHeader() {
-  const tabs=["Hoje","Histórico","Relatório","Resumo"];
-  const hdr=h("div",{style:{background:"#1a1a1a",padding:"16px 16px 0",borderBottom:"1px solid #333",position:"sticky",top:"0",zIndex:"10"}});
-  const top=h("div",{style:{display:"flex",alignItems:"center",gap:"10px",marginBottom:"12px"}},
-    h("span",{style:{fontSize:"28px",cursor:"pointer"},onclick:()=>{S.viaturaMod=true;render();}},"🚕"),
-    h("div",{style:{flex:"1"}},h("div",{style:{fontWeight:"700",fontSize:"17px",color:"#facc15"}},"Folha de Serviço"),h("div",{style:{fontSize:"11px",color:"#888"}},"Registo Diário de Táxi")),
-    h("span",{id:"hdr_spin",class:"spin",style:{fontSize:"16px",display:S.syncing?"inline-block":"none"}},"🔄"),
-    h("button",{style:{background:"none",border:"none",color:"#666",fontSize:"11px",cursor:"pointer"},onclick:()=>{
-      if(confirm("Tens a certeza que queres sair e limpar os dados locais?")){
-        S.records={};S.loadedMonths={};S.anual=null;S.tab=0;B=newBuf();
-        render();
-      }
-    }},"Sair")
-  );
-  hdr.append(top);
-  const nav=h("div",{style:{display:"flex"}});
-  tabs.forEach((t,i)=>nav.append(h("button",{
-    style:{flex:"1",padding:"10px 0",fontSize:"13px",fontWeight:"600",background:"none",border:"none",cursor:"pointer",color:S.tab===i?"#facc15":"#888",borderBottom:S.tab===i?"2px solid #facc15":"2px solid transparent"},
-    onclick:()=>{if(S.tab!==i){syncDOM();S.tab=i;render();}}
-  },t)));
-  hdr.append(nav); return hdr;
-}
-
-function mkField(label,id,value,ph) {
-  const w=document.createElement("div");
-  const s=document.createElement("span");s.className="lbl";s.textContent=label;
-  const inp=document.createElement("input");inp.type="number";inp.id=id;inp.className="inp";inp.placeholder=ph;inp.value=value||"";
-  w.append(s,inp); return w;
-}
-
-function renderHoje() {
-  const d=S.date, b=B, c=calc(b);
-  const wrap=h("div",{});
-  function prevKmLocal(){
-    const dates=Object.keys(S.records).sort((a,b)=>a.localeCompare(b));
-    const idx=dates.indexOf(d);
-    if(idx>0) return parseFloat(getDay(dates[idx-1]).kmFinal)||0;
-    const prev=new Date(d);prev.setDate(prev.getDate()-1);
-    return parseFloat((S.records[prev.toISOString().split("T")[0]]||{}).kmFinal)||0;
-  }
-  const dateRow=h("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"16px"}},
-    h("span",{style:{fontSize:"13px",color:"#aaa"}},"📅 Data:"),
-    h("input",{type:"date",value:d,style:{background:"#222",border:"1px solid #444",color:"#fff",borderRadius:"8px",padding:"4px 10px",fontSize:"13px"},
-      onchange:async e=>{syncDOM();S.date=e.target.value;await loadMonth(S.date.slice(0,7));B=initBuf(S.date);render();}}),
-    h("button",{style:{marginLeft:"auto",background:"#333",border:"none",borderRadius:"8px",padding:"5px 10px",color:"#aaa",fontSize:"13px",cursor:"pointer"},
-      onclick:async()=>{S.loadedMonths[S.date.slice(0,7)]=false;await loadMonth(S.date.slice(0,7));B=initBuf(S.date);render();}},"🔄")
-  );
-  if(S.records[d]) dateRow.append(h("button",{style:{background:"#7f1d1d",border:"none",borderRadius:"8px",padding:"5px 12px",color:"#fca5a5",fontSize:"12px",fontWeight:"700",cursor:"pointer"},onclick:()=>{S.deleteModal=true;render();}},"🗑️"));
-  wrap.append(dateRow);
-
-  wrap.append(h("div",{class:"card"},
-    h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#facc15",fontSize:"14px"}},"📍 Quilómetros"),
-    h("div",{class:"grid2",style:{marginBottom:"10px"}},mkField("KM Inicial","f_kmI",b.kmI,"0"),mkField("KM Final","f_kmF",b.kmF,"0")),
-    h("div",{style:{marginBottom:"10px"}},
-      h("button",{style:{background:"#374151",border:"none",borderRadius:"8px",padding:"6px 14px",color:"#94a3b8",fontSize:"12px",fontWeight:"700",cursor:"pointer"},
-        onclick:()=>{
-          const p=prevKmLocal();
-          if(p>0){B.kmI=p.toString();B.kmF=p.toString();
-            const a=document.getElementById("f_kmI"),b=document.getElementById("f_kmF");
-            if(a)a.value=p;if(b)b.value=p;updateCalc();updateStatus();
-          } else {S.err="KM final do dia anterior não encontrado.";updateStatus();}
-        }},"🛌 Folga")
-    ),
-    h("div",{style:{background:"#facc1520",borderRadius:"8px",padding:"10px 14px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
-      h("span",{style:{color:"#aaa",fontSize:"13px"}},"Total do Dia"),
-      h("span",{id:"c_tkm",style:{color:"#facc15",fontWeight:"800",fontSize:"20px"}},fkm(c.tkm))
-    )
-  ));
-
-  wrap.append(h("div",{class:"card"},
-    h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#4ade80",fontSize:"14px"}},"💶 Faturação"),
-    h("div",{style:{marginBottom:"10px"}},mkField("Valor Total Faturado (€)","f_fat",b.fat,"0.00")),
-    h("div",{style:{marginBottom:"10px"}},mkField("Recebido em Multibanco (€)","f_mb",b.mb,"0.00")),
-    h("div",{style:{background:"#1a2e1a",borderRadius:"8px",padding:"10px 14px",display:"flex",justifyContent:"space-between"}},
-      h("span",{style:{color:"#aaa",fontSize:"13px"}},"Recebido em Dinheiro"),
-      h("span",{id:"c_din",style:{color:"#4ade80",fontWeight:"700",fontSize:"16px"}},eur(c.din))
-    )
-  ));
-
-  wrap.append(h("div",{class:"card"},
-    h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#fb923c",fontSize:"14px"}},"⛽ Combustível & Portagens"),
-    h("div",{class:"grid2"},mkField("Combustível (€)","f_comb",b.comb,"0.00"),mkField("Portagens (€)","f_port",b.port,"0.00"))
-  ));
-
-  const dc=h("div",{class:"card"},
-    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"12px"}},
-      h("div",{style:{fontWeight:"700",color:"#f87171",fontSize:"14px"}},"🧾 Outras Despesas"),
-      h("button",{style:{background:"#f87171",color:"#fff",border:"none",borderRadius:"8px",padding:"5px 12px",fontSize:"12px",fontWeight:"700",cursor:"pointer"},
-        onclick:()=>{S.expModal=true;S.editExpIdx=null;S.expForm={cat:CATS[0],desc:"",val:""};render();}},"+Adicionar")
-    )
-  );
-  const exps=b.exps||[];
-  if(!exps.length) dc.append(h("div",{style:{textAlign:"center",color:"#555",fontSize:"13px",padding:"12px 0"}},"Sem despesas extra"));
-  exps.forEach((e,i)=>dc.append(h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",background:"#2a2a2a",borderRadius:"8px",padding:"8px 12px",marginBottom:"6px"}},
-    h("div",{},h("div",{style:{fontSize:"13px",fontWeight:"600"}},e.category),e.desc?h("div",{style:{fontSize:"11px",color:"#888"}},e.desc):null),
-    h("div",{style:{display:"flex",alignItems:"center",gap:"8px"}},
-      h("span",{style:{color:"#f87171",fontWeight:"700"}},eur(e.valor)),
-      h("button",{style:{background:"none",border:"none",cursor:"pointer",fontSize:"14px"},onclick:()=>{S.expModal=true;S.editExpIdx=i;S.expForm={cat:e.category,desc:e.desc||"",val:e.valor};render();}},"✏️"),
-      h("button",{style:{background:"none",border:"none",cursor:"pointer",fontSize:"14px"},onclick:()=>{B.exps.splice(i,1);render();}},"🗑️")
-    )
-  )));
-  wrap.append(dc);
-
-  wrap.append(h("div",{class:"card"},
-    h("div",{style:{fontWeight:"700",marginBottom:"10px",color:"#94a3b8",fontSize:"14px"}},"📝 Observações"),
-    h("input",{id:"f_obs",class:"inp",placeholder:"Notas sobre o dia (opcional)",value:b.obs||"",style:{fontSize:"14px"}})
-  ));
-
-  wrap.append(h("div",{class:"card"},
-    h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#c084fc",fontSize:"14px"}},"📊 Comissão"),
-    h("div",{id:"c_comB",style:{fontSize:"13px",color:"#aaa",marginBottom:"6px"}},"Base (40% de "+eur(c.fat)+"): "+eur(c.comB)),
-    h("div",{id:"c_iva",style:{fontSize:"13px",color:"#aaa",marginBottom:"6px"}},"IVA (23%): "+eur(c.ivaV)),
-    h("div",{style:{height:"1px",background:"#333",margin:"4px 0"}}),
-    h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"15px",fontWeight:"700"}},
-      h("span",{style:{color:"#c084fc"}},"Total Comissão c/ IVA"),h("span",{id:"c_com",style:{color:"#c084fc"}},eur(c.com))
-    )
-  ));
-
-  wrap.append(h("div",{style:{background:"linear-gradient(135deg,#1a2e1a,#1e1e1e)",border:"1px solid #4ade8044",borderRadius:"12px",padding:"16px"}},
-    h("div",{style:{fontWeight:"700",marginBottom:"12px",color:"#4ade80",fontSize:"14px"}},"✅ Valor a Entregar"),
-    h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Faturado"),h("span",{id:"c_fat_r",style:{color:"#4ade80"}},"+ "+eur(c.fat))),
-    h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Comissão c/ IVA"),h("span",{id:"c_com_r",style:{color:"#f87171"}},"− "+eur(c.com))),
-    h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Combustível"),h("span",{id:"c_comb_r",style:{color:"#f87171"}},"− "+eur(c.comb))),
-    h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Portagens"),h("span",{id:"c_port_r",style:{color:"#4ade80"}},"+ "+eur(c.port))),
-    h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"Outras Despesas"),h("span",{id:"c_outras_r",style:{color:"#f87171"}},"− "+eur(c.outras))),
-    c.dep>0?h("div",{class:"row"},h("span",{style:{color:"#aaa"}},"🏦 Depósito Bancário"),h("span",{id:"c_dep_r",style:{color:"#60a5fa"}},"− "+eur(c.dep))):null,
-    h("div",{class:"row",style:{marginBottom:"10px"}},h("span",{style:{color:"#aaa"}},"Multibanco"),h("span",{id:"c_mb_r",style:{color:"#f87171"}},"− "+eur(c.mb))),
-    h("div",{style:{background:c.entr>=0?"#4ade8022":"#f8717122",borderRadius:"10px",padding:"12px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
-      h("span",{style:{fontWeight:"700",fontSize:"15px"}},"Entregar"),
-      h("span",{id:"c_entr",style:{fontWeight:"800",fontSize:"24px",color:c.entr>=0?"#4ade80":"#f87171"}},eur(c.entr))
-    )
-  ));
-
-  setTimeout(()=>{
-    ["f_kmI","f_kmF","f_fat","f_mb","f_port","f_comb"].forEach(id=>{
-      const el=document.getElementById(id);
-      if(el) el.addEventListener("input",()=>{syncDOM();updateCalc();updateStatus();});
+  // Meses faturação: linhas 4-15 (índice 3-14), cols B=1, C=2, D=3
+  const meses = [];
+  for (let i = 3; i <= 14; i++) {
+    const row = data[i];
+    if (!row || !row[1]) continue;
+    meses.push({
+      mes: row[1],
+      fat2026: row[2] || 0,
+      fat2025: row[3] || 0,
+      kms2026: row[5] || 0,
+      comb2026: row[8] || 0,
     });
-  },0);
-  return wrap;
-}
-
-function renderHistorico() {
-  const wrap=h("div",{});
-  wrap.append(h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:"16px"}},
-    h("div",{style:{fontWeight:"700",fontSize:"16px",color:"#facc15"}},"📋 Histórico de Dias"),
-    h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"11px",cursor:"pointer"},
-      onclick:async()=>{S.loadedMonths[S.date.slice(0,7)]=false;await loadMonth(S.date.slice(0,7));render();}},"🔄 Sincronizar")
-  ));
-  const dates=Object.keys(S.records).sort((a,b)=>a.localeCompare(b));
-  if(!dates.length){wrap.append(h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Nenhum registo carregado."));return wrap;}
-  dates.forEach(d=>{
-    const c=calc(newBuf(getDay(d))), isT=d===today();
-    wrap.append(h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"14px",marginBottom:"10px",cursor:"pointer",border:isT?"1px solid #facc1566":"1px solid transparent"},
-      onclick:()=>{syncDOM();B=initBuf(d);S.date=d;S.tab=0;render();}},
-      h("div",{style:{display:"flex",justifyContent:"space-between",marginBottom:"8px"}},
-        h("div",{style:{fontWeight:"700",fontSize:"14px"}},(isT?"🟡 Hoje":"📅")+" "+d),
-        h("div",{style:{fontWeight:"800",fontSize:"16px",color:c.entr>=0?"#4ade80":"#f87171"}},eur(c.entr))
-      ),
-      h("div",{style:{display:"flex",gap:"12px",fontSize:"12px",color:"#aaa",flexWrap:"wrap"}},
-        h("span",{},"🛣️ "+fkm(c.tkm)),h("span",{},"💶 "+eur(c.fat)),h("span",{},"📊 "+eur(c.com))
-      )
-    ));
-  });
-  return wrap;
-}
-
-function renderRelatorio() {
-  const wrap=h("div",{});
-  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"16px",marginBottom:"16px",color:"#facc15"}},"📈 Relatório Mensal"));
-  wrap.append(h("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"16px"}},
-    h("span",{style:{fontSize:"13px",color:"#aaa"}},"Mês:"),
-    h("input",{type:"month",value:S.month,style:{background:"#222",border:"1px solid #444",color:"#fff",borderRadius:"8px",padding:"4px 10px",fontSize:"13px"},
-      onchange:async e=>{S.month=e.target.value;await loadMonth(S.month);render();}}),
-    h("button",{style:{marginLeft:"auto",background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"11px",cursor:"pointer"},
-      onclick:async()=>{S.loadedMonths[S.month]=false;await loadMonth(S.month);render();}},"🔄")
-  ));
-  const mD=Object.keys(S.records).filter(d=>d.startsWith(S.month));
-  if(!mD.length){wrap.append(h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Sem registos. Clica em 🔄"));return wrap;}
-  const st=mD.reduce((a,d)=>{
-    const c=calc(newBuf(getDay(d))), worked=c.fat>0?1:0;
-    const dep=(getDay(d).expenses||[]).filter(e=>e.category==="Depósito").reduce((s,e)=>s+(parseFloat(e.valor)||0),0);
-    return {km:a.km+c.tkm,fat:a.fat+c.fat,mb:a.mb+c.mb,din:a.din+c.din,desp:a.desp+c.outras+c.comb+c.port,com:a.com+c.com,entr:a.entr+c.entr,dias:a.dias+worked,dep:a.dep+dep};
-  },{km:0,fat:0,mb:0,din:0,desp:0,com:0,entr:0,dias:0,dep:0});
-  const grid=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"12px"}});
-  [   ["Dias Trabalhados",st.dias+" dias","#facc15"],["KM Totais",fkm(st.km),"#facc15"],
-   ["Total Faturado",eur(st.fat),"#4ade80"],["Multibanco",eur(st.mb),"#60a5fa"],
-   ["Dinheiro",eur(st.din),"#60a5fa"],["Despesas",eur(st.desp),"#f87171"],
-   ["Depósitos",eur(st.dep),"#60a5fa"],["Comissão Motorista",eur(st.com),"#c084fc"]].forEach(([l,v,c])=>
-    grid.append(h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"12px 14px"}},
-      h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},l),
-      h("div",{style:{fontWeight:"700",fontSize:"16px",color:c}},v)
-    ))
-  );
-  wrap.append(grid);
-  wrap.append(h("div",{style:{background:"linear-gradient(135deg,#1a2e1a,#1e1e1e)",border:"1px solid #4ade8044",borderRadius:"12px",padding:"16px"}},
-    h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-      h("div",{},h("div",{style:{fontSize:"12px",color:"#aaa",marginBottom:"4px"}},"💰 Entregar do Mês"),h("div",{style:{fontSize:"11px",color:"#555"}},"Média: "+eur(st.entr/Math.max(st.dias,1))+" / dia")),
-      h("div",{style:{fontWeight:"800",fontSize:"28px",color:st.entr>=0?"#4ade80":"#f87171"}},eur(st.entr))
-    )
-  ));
-  return wrap;
-}
-
-function renderResumo() {
-  const wrap=h("div",{});
-  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"16px",marginBottom:"16px",color:"#facc15"}},"📊 Resumo"));
-  const sel=h("div",{style:{display:"flex",background:"#1e1e1e",borderRadius:"10px",padding:"4px",marginBottom:"20px",gap:"4px"}});
-  ["mensal","anual"].forEach(t=>sel.append(h("button",{
-    style:{flex:"1",padding:"8px",border:"none",borderRadius:"8px",cursor:"pointer",fontWeight:"700",fontSize:"13px",
-      background:S.resumoTab===t?"#facc15":"transparent",color:S.resumoTab===t?"#111":"#888"},
-    onclick:()=>{S.resumoTab=t;render();}
-  },t==="mensal"?"📈 Mensal":"📅 Anual")));
-  wrap.append(sel);
-  if(S.resumoTab==="mensal") wrap.append(renderResumoMensal());
-  else wrap.append(renderAnual());
-  return wrap;
-}
-
-function renderResumoMensal() {
-  const wrap=h("div",{});
-  wrap.append(h("div",{style:{display:"flex",alignItems:"center",gap:"8px",marginBottom:"20px"}},
-    h("span",{style:{fontSize:"13px",color:"#aaa"}},"Mês:"),
-    h("input",{type:"month",value:S.month,style:{background:"#222",border:"1px solid #444",color:"#fff",borderRadius:"8px",padding:"4px 10px",fontSize:"13px"},
-      onchange:async e=>{S.month=e.target.value;await loadMonth(S.month);render();}})
-  ));
-  const mD=Object.keys(S.records).filter(d=>d.startsWith(S.month));
-  if(!mD.length){wrap.append(h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Sem registos para este mês."));return wrap;}
-  const ds=mD.map(d=>calc(newBuf(getDay(d))));
-  const tKm=ds.reduce((s,d)=>s+d.tkm,0), tVf=ds.reduce((s,d)=>s+d.fat,0), tMb=ds.reduce((s,d)=>s+d.mb,0);
-  const tC=ds.reduce((s,d)=>s+d.comb,0), tP=ds.reduce((s,d)=>s+d.port,0);
-  const tIva=ds.reduce((s,d)=>s+d.ivaV,0), tComB=ds.reduce((s,d)=>s+d.comB,0), tCom=ds.reduce((s,d)=>s+d.com,0);
-  const dias=ds.filter(d=>d.fat>0).length;
-  const cats={};let tDep=0;
-  mD.forEach(d=>(getDay(d).expenses||[]).forEach(e=>{
-    if(e.category==="Depósito") tDep+=(parseFloat(e.valor)||0);
-    else cats[e.category]=(cats[e.category]||0)+(parseFloat(e.valor)||0);
-  }));
-  const tOut=Object.values(cats).reduce((s,v)=>s+v,0);
-  const tEntr=tVf-tCom-tC+tP-tOut-tDep-tMb;
-  const selDay=getDay(S.date);
-  const sKmI=parseFloat(selDay.kmInicial)||0, sKmF=parseFloat(selDay.kmFinal)||0;
-  const sTkm=sKmF>sKmI?sKmF-sKmI:0, sFat=parseFloat(selDay.valorFaturado)||0;
-  const fatKmDia=sTkm>0?sFat/sTkm:0;
-  const arVals=Object.values(S.records);
-  const anoAtualStr=today().slice(0,4);
-  const arValsAno=Object.entries(S.records).filter(([d])=>d.startsWith(anoAtualStr)).map(([,r])=>r);
-  const arTKm=arValsAno.reduce((s,r)=>{const a=parseFloat(r.kmInicial)||0,b=parseFloat(r.kmFinal)||0;return s+(b>a?b-a:0);},0);
-  const arTFat=arValsAno.reduce((s,r)=>s+(parseFloat(r.valorFaturado)||0),0);
-  const fatKmAnual=arTKm>0?arTFat/arTKm:0;
-
-  function kpi(icon,title,value,sub,color){
-    return h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"10px",border:`1px solid ${color}33`}},
-      h("div",{style:{fontSize:"11px",color:"#777",marginBottom:"6px"}},icon+" "+title),
-      h("div",{style:{fontWeight:"800",fontSize:"22px",color}},value),
-      sub?h("div",{style:{fontSize:"11px",color:"#666",marginTop:"4px"}},sub):null
-    );
-  }
-  wrap.append(h("div",{style:{fontSize:"11px",color:"#facc15",fontWeight:"700",letterSpacing:"1px",marginBottom:"8px",textTransform:"uppercase"}},"📍 Quilómetros"));
-  wrap.append(kpi("🛣️","Média de KM por Dia",(tKm/Math.max(dias,1)).toFixed(1)+" km","Total: "+tKm.toFixed(0)+" km em "+dias+" dias","#facc15"));
-  wrap.append(kpi("💶","Faturado/KM — Dia ("+S.date+")","€"+(Math.round(fatKmDia*100)/100).toFixed(2)+"/km","Média KM Dia","#60a5fa"));
-  wrap.append(kpi("📈","Faturado/KM — Acumulado Mensal","€"+(tKm>0?(Math.round((tVf/tKm)*100)/100).toFixed(2):"0.00")+"/km","Média KM Mensal","#60a5fa"));
-  wrap.append(kpi("🗓️","Faturado/KM — Acumulado Anual","€"+(Math.round(fatKmAnual*100)/100).toFixed(2)+"/km","Média KM Ano","#a78bfa"));
-  wrap.append(h("div",{style:{fontSize:"11px",color:"#f87171",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"⛽ Combustível"));
-  wrap.append(kpi("⛽","Custo por 100 km","€"+(tKm>0?(Math.round((tC/tKm)*100*100)/100).toFixed(2):"0.00")+"/100km",eur(tC)+" gastos · "+tKm.toFixed(0)+" km","#f87171"));
-  wrap.append(h("div",{style:{fontSize:"11px",color:"#c084fc",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"📊 Comissão"));
-  wrap.append(kpi("🧾","Comissão do Motorista",eur(tComB),"IVA (23%): "+eur(tIva)+" · Total c/ IVA: "+eur(tCom),"#c084fc"));
-  wrap.append(h("div",{style:{fontSize:"11px",color:"#4ade80",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"💰 Valor a Entregar"));
-  const card=h("div",{style:{background:tEntr>=0?"#1a2e1a":"#2e1a1a",border:`1px solid ${tEntr>=0?"#4ade80":"#f87171"}55`,borderRadius:"14px",padding:"18px",marginBottom:"10px"}});
-  const lines=h("div",{style:{display:"flex",flexDirection:"column",gap:"6px",marginBottom:"14px"}});
-  const lr=(l,v,c,op)=>h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px"}},h("span",{style:{color:"#888"}},l),h("span",{style:{color:c,fontWeight:"600"}},op+" "+v));
-  lines.append(lr("💶 Total Faturado",eur(tVf),"#4ade80","+"));
-  lines.append(lr("📊 Comissão c/ IVA",eur(tCom),"#c084fc","−"));
-  lines.append(lr("⛽ Combustível",eur(tC),"#f87171","−"));
-  lines.append(lr("💳 Multibanco",eur(tMb),"#60a5fa","−"));
-  if(tDep>0) lines.append(lr("🏦 Depósito Bancário",eur(tDep),"#60a5fa","−"));
-  const ce=Object.entries(cats).sort((a,b)=>b[1]-a[1]);
-  if(ce.length){
-    lines.append(h("div",{style:{fontSize:"11px",color:"#666",margin:"6px 0 2px",fontWeight:"600",textTransform:"uppercase"}},"🧾 Outras Despesas"));
-    ce.forEach(([cat,val])=>lines.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",paddingLeft:"12px"}},h("span",{style:{color:"#888"}},"· "+cat),h("span",{style:{color:"#f87171",fontWeight:"600"}},"− "+eur(val)))));
-    if(ce.length>1) lines.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"12px",paddingLeft:"12px",marginTop:"2px"}},h("span",{style:{color:"#666"}},"Total outras"),h("span",{style:{color:"#f87171"}},"− "+eur(tOut))));
-  }
-  if(tP>0) lines.append(lr("🛣️ Portagens (cliente)",eur(tP),"#4ade80","+"));
-  card.append(lines);
-  card.append(h("div",{style:{height:"1px",background:"#333",marginBottom:"14px"}}));
-  card.append(h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center"}},
-    h("span",{style:{fontWeight:"700",fontSize:"14px"}},"Total a Entregar"),
-    h("span",{style:{fontWeight:"800",fontSize:"28px",color:tEntr>=0?"#4ade80":"#f87171"}},eur(tEntr))
-  ));
-  wrap.append(card);
-  return wrap;
-}
-
-function renderAnual() {
-  const wrap=h("div",{});
-  if(!S.anual){
-    wrap.append(h("div",{style:{textAlign:"center",color:"#888",padding:"40px"}},"A carregar..."));
-    apiGet("getAnual").then(data=>{S.anual=data;if(S.tab===3&&S.resumoTab==="anual")render();});
-    return wrap;
-  }
-  if(S.anual.error){wrap.append(h("div",{style:{color:"#f87171",padding:"20px"}},S.anual.error));return wrap;}
-  const {meses,totais,previsao,viatura}=S.anual;
-
-  wrap.append(h("div",{style:{display:"flex",justifyContent:"flex-end",marginBottom:"12px"}},
-    h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"11px",cursor:"pointer"},onclick:()=>{S.anual=null;render();}},"🔄 Atualizar")
-  ));
-
-  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#facc15",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"💶 Faturação Mensal"));
-  const table=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",overflow:"hidden",marginBottom:"16px"}});
-  const hdr=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"8px 12px",background:"#2a2a2a",fontSize:"11px",color:"#666",fontWeight:"700"}});
-  ["Mês","Fat. 2026","Fat. 2025","KMs"].forEach(t=>hdr.append(h("span",{},t)));
-  table.append(hdr);
-  meses.forEach((m,i)=>{
-    const f25=parseFloat(m.fat2025)||0;
-    const row=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"8px 12px",background:i%2===0?"#1e1e1e":"#232323",fontSize:"13px",borderTop:"1px solid #2a2a2a"}});
-    row.append(h("span",{style:{color:"#fff",fontWeight:"600"}},m.mes),h("span",{style:{color:"#4ade80"}},eur(m.fat2026)),h("span",{style:{color:f25>=0?"#4ade80":"#f87171"}},eur(m.fat2025)),h("span",{style:{color:"#facc15"}},Number(m.kms2026).toFixed(0)+" km"));
-    table.append(row);
-  });
-  const totRow=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"10px 12px",background:"#2a2a2a",fontSize:"13px",fontWeight:"700",borderTop:"2px solid #333"}});
-  totRow.append(h("span",{style:{color:"#facc15"}},"Total"),h("span",{style:{color:"#4ade80"}},eur(totais.fat2026)),h("span",{style:{color:"#aaa"}},eur(totais.fat2025)),h("span",{style:{color:"#facc15"}},Number(totais.kms2026).toFixed(0)+" km"));
-  table.append(totRow); wrap.append(table);
-
-  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#f87171",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"⛽ Combustível"));
-  const cg=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"16px"}});
-  meses.forEach(m=>{if(parseFloat(m.comb2026)>0) cg.append(h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"10px 14px"}},h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},m.mes),h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(m.comb2026))));});
-  cg.append(h("div",{style:{background:"#2e1a1a",borderRadius:"10px",padding:"10px 14px",border:"1px solid #f8717133"}},h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},"Total"),h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(totais.comb2026))));
-  wrap.append(cg);
-
-  if(previsao&&Object.keys(previsao).length>0){
-    wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#c084fc",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"📈 Previsão do Ano"));
-    const pc=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
-    Object.values(previsao).forEach(p=>{if(!p.label)return;pc.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"8px"}},h("span",{style:{color:"#aaa"}},p.label),h("span",{style:{color:"#c084fc",fontWeight:"700"}},eur(p.valor))));});
-    wrap.append(pc);
   }
 
-  if(viatura&&viatura.length>0){
-    wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#60a5fa",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"🚕 Viatura"));
-    const vc=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
-    viatura.forEach(v=>{if(!v.label)return;vc.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"8px"}},h("span",{style:{color:"#aaa"}},v.label),h("span",{style:{color:"#60a5fa",fontWeight:"700"}},typeof v.valor==="number"&&String(v.label).toLowerCase().includes("km")?Number(v.valor).toFixed(0)+" km":eur(v.valor))));});
-    wrap.append(vc);
+  // Totais linha 16 (índice 15)
+  const totRow = data[15] || [];
+  const totais = {
+    fat2026: totRow[2] || 0,
+    fat2025: totRow[3] || 0,
+    kms2026: totRow[5] || 0,
+    comb2026: totRow[8] || 0,
+  };
+
+  // KM inicial do 1º dia de Janeiro — linha 4 (índice 3), coluna B (índice 1) dos separadores mensais
+  const ss2 = SpreadsheetApp.getActiveSpreadsheet();
+  const janSheet = ss2.getSheetByName("Janeiro " + new Date().getFullYear());
+  let kmInicioAno = 0;
+  if (janSheet) {
+    const janData = janSheet.getDataRange().getValues();
+    for (let i = 1; i < janData.length; i++) {
+      const val = janData[i][COLS.kmsIniciais - 1];
+      if (val && parseFloat(val) > 0) { kmInicioAno = parseFloat(val); break; }
+    }
+  }
+  totais.kmInicioAno = kmInicioAno;
+
+  // Previsão Ano: linhas 22-27 (índice 21-26), cols B=1, C=2
+  const previsao = {};
+  const previsaoLabels = ["fatAcumulada","previsaoFinal","previsaoComissao","mediaMenusal"];
+  for (let i = 21; i <= 24; i++) {
+    const row = data[i] || [];
+    previsao[previsaoLabels[i-21]] = { label: row[1] || "", valor: row[2] || 0 };
   }
 
-  // ── Previsões Calculadas ──
-  const hojeStr=today(), anoAtual=hojeStr.slice(0,4), mesAtual=hojeStr.slice(0,7);
-  const allEntries=Object.entries(S.records);
-  const anoEntries=allEntries.filter(([d])=>d.startsWith(anoAtual));
-  // Total KM do ano vem diretamente da sheet (totais.kms2026)
-  const totKmAno = parseFloat(totais.kms2026)||0;
-  // KM inicial do 1º dia de Janeiro
-  const janEntries=Object.entries(S.records).filter(([d])=>d.startsWith(anoAtual+"-01")).sort((a,b)=>a[0].localeCompare(b[0]));
-  const kmJan1=janEntries.length>0?(parseFloat(janEntries[0][1].kmInicial)||0):0;
-  // Dias decorridos desde 1 Janeiro até hoje
-  const dIni=new Date(anoAtual+"-01-01"), dHoje=new Date(hojeStr);
-  const diasDecorridos=Math.floor((dHoje-dIni)/(1000*60*60*24))+1;
-  const diasAno=(parseInt(anoAtual)%4===0)?366:365;
-  // Média KM diária = total KM ano (da sheet) / dias decorridos
-  const mediaKmDia=diasDecorridos>0?totKmAno/diasDecorridos:0;
-  // Previsão KM percorridos no ano = média × 365
-  const prevKmAno=Math.round(mediaKmDia*diasAno);
-  // Previsão KM viatura final do ano = KM Jan 1 + previsão KM ano
-  const prevKmViatura=kmJan1+prevKmAno;
-  // Previsão faturado mês
-  const mesEntries=allEntries.filter(([d])=>d.startsWith(mesAtual));
-  const diasTrabMes=mesEntries.filter(([,r])=>(parseFloat(r.valorFaturado)||0)>0).length;
-  const totFatMes=mesEntries.reduce((s,[,r])=>s+(parseFloat(r.valorFaturado)||0),0);
-  const mediaFatDia=diasTrabMes>0?totFatMes/diasTrabMes:0;
-  const [aM,mM]=mesAtual.split("-").map(Number);
-  const diasMes=new Date(aM,mM,0).getDate();
-  const prevFatMes=mediaFatDia*diasMes;
-  const prevComMes=prevFatMes*0.40*1.23;
-
-  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#4ade80",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"🔮 Previsões Calculadas"));
-  const pcc=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
-  const prow=(label,valor,color)=>h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"10px",paddingBottom:"10px",borderBottom:"1px solid #2a2a2a"}},
-    h("span",{style:{color:"#aaa",flex:"1"}},label),h("span",{style:{color:color||"#4ade80",fontWeight:"700"}},valor));
-  pcc.append(
-    prow("🛣️ Previsão KM Percorridos no Ano",Number(prevKmAno).toLocaleString()+" km","#facc15"),
-    prow("🔮 Previsão KM Viatura Final do Ano",Number(prevKmViatura).toLocaleString()+" km","#facc15"),
-    h("div",{style:{height:"8px"}}),
-    prow("📅 Previsão Faturado Mês ("+mesAtual+")",eur(prevFatMes),"#4ade80"),
-    prow("📊 Previsão Comissão Mês ("+mesAtual+")",eur(prevComMes),"#c084fc")
-  );
-  wrap.append(pcc);
-  return wrap;
-}
-
-function renderNav() {
-  const nav=h("div",{style:{position:"fixed",bottom:"0",left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"420px",background:"#1a1a1a",borderTop:"1px solid #333",padding:"10px 16px"}});
-  if(S.tab===0){
-    const can=canSave();
-    nav.append(h("button",{id:"btn_save",style:{width:"100%",padding:"13px",background:S.saved?"#16a34a":can?"#facc15":"#444",border:"none",borderRadius:"12px",color:can?"#111":"#888",fontWeight:"800",fontSize:"15px",cursor:can?"pointer":"not-allowed"},onclick:can?saveDay:null},S.saved?"✅ Guardado!":"💾 Gravar Dia"));
-  } else {
-    nav.append(h("div",{style:{height:"44px"}}));
+  // Viatura: linhas 22-28 (índice 21-27), cols E=4, F=5
+  const viatura = [];
+  for (let i = 21; i <= 28; i++) {
+    const row = data[i] || [];
+    if (row[4]) viatura.push({ label: row[4], valor: row[5] || 0 });
   }
-  return nav;
+
+  return { meses, totais, previsao, viatura };
 }
 
-function renderViaturaModal() {
-  const MANUT = ["Extintor","Inspeção","Oficina","Outros"];
+function doPost(e) {
+  try {
+    const body = JSON.parse(e.postData.contents);
+    const action = body.action;
+    Logger.log("doPost: action=" + action + " | data=" + body.data);
+    if (action === "saveDay") return jsonResponse_(saveDay_(body.data, body.day));
+    if (action === "deleteDay") {
+      Logger.log("ATENCAO: deleteDay para data=" + body.data);
+      return jsonResponse_(deleteDay_(body.data));
+    }
+    return jsonResponse_({ error: "Ação desconhecida" });
+  } catch (err) {
+    Logger.log("ERRO doPost: " + err.toString());
+    return jsonResponse_({ error: err.toString() });
+  }
+}
 
-  // Recolhe todos os registos de manutenção
-  const registos = [];
-  Object.entries(S.records).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([date, day]) => {
-    const kmI = parseFloat(day.kmInicial)||0;
-    (day.expenses||[]).forEach(e => {
-      if(MANUT.includes(e.category)) {
-        registos.push({ date, category: e.category, valor: parseFloat(e.valor)||0, desc: e.desc||"", km: kmI });
+function jsonResponse_(obj) {
+  return ContentService.createTextOutput(JSON.stringify(obj)).setMimeType(ContentService.MimeType.JSON);
+}
+
+// NUNCA apaga linhas. NUNCA insere linhas. NUNCA toca na coluna A.
+function saveDay_(dateStr, day) {
+  Logger.log("saveDay_ iniciado: dateStr=" + dateStr);
+  const sheet = getOrCreateMonthSheet_(dateStr);
+
+  const kmInicial = parseFloat(day.kmInicial) || 0;
+  const kmFinal = parseFloat(day.kmFinal) || 0;
+  const kmPercorridos = kmFinal > kmInicial ? kmFinal - kmInicial : 0;
+  const faturado = parseFloat(day.valorFaturado) || 0;
+  const multibanco = parseFloat(day.multibanco) || 0;
+  const portagens = parseFloat(day.portagens) || 0;
+  const combustivel = parseFloat(day.combustivel) || 0;
+
+  const comissaoBase = faturado * COMMISSION_RATE;
+  const iva = comissaoBase * IVA_RATE;
+  const comissaoTotal = comissaoBase + iva;
+  const expenses = (day.expenses || []).filter(ex => parseFloat(ex.valor) > 0);
+  const totalOutras = expenses.reduce((s, ex) => s + (parseFloat(ex.valor) || 0), 0);
+  const entregar = faturado - comissaoTotal - combustivel + portagens - totalOutras - multibanco;
+
+  const mainRow = findMainRowForDate_(sheet, dateStr);
+  Logger.log("saveDay_: mainRow=" + mainRow);
+
+  if (mainRow < 0) {
+    Logger.log("ERRO: Data nao encontrada na sheet: " + dateStr);
+    return { success: false, error: "Data não encontrada: " + dateStr };
+  }
+
+  sheet.getRange(mainRow, COLS.kmsIniciais).setValue(day.kmInicial !== "" ? day.kmInicial : 0);
+  sheet.getRange(mainRow, COLS.kmsFinais).setValue(day.kmFinal !== "" ? day.kmFinal : 0);
+  sheet.getRange(mainRow, COLS.kmsPercorridos).setValue(kmPercorridos);
+  sheet.getRange(mainRow, COLS.faturado).setValue(faturado);
+  sheet.getRange(mainRow, COLS.comissao).setValue(comissaoTotal);
+  sheet.getRange(mainRow, COLS.combustivel).setValue(combustivel);
+  sheet.getRange(mainRow, COLS.multibanco).setValue(multibanco);
+  sheet.getRange(mainRow, COLS.portagens).setValue(portagens);
+  sheet.getRange(mainRow, COLS.outrasDespesas).setValue(expenses.length >= 1 ? expenses[0].valor : "");
+  sheet.getRange(mainRow, COLS.tipo).setValue(expenses.length >= 1 ? expenses[0].category : "");
+  sheet.getRange(mainRow, COLS.obs).setValue(expenses.length >= 1 ? (expenses[0].desc || day.obs || "") : (day.obs || ""));
+  sheet.getRange(mainRow, COLS.entregar).setValue(entregar);
+  sheet.getRange(mainRow, COLS.iva).setValue(iva);
+
+  Logger.log("saveDay_: gravado com sucesso na linha " + mainRow);
+  return { success: true, entregar, iva, comissaoTotal };
+}
+
+function deleteDay_(dateStr) {
+  Logger.log("deleteDay_: dateStr=" + dateStr);
+  const sheet = getOrCreateMonthSheet_(dateStr);
+  const mainRow = findMainRowForDate_(sheet, dateStr);
+  if (mainRow < 0) return { success: false, error: "Data não encontrada" };
+  sheet.getRange(mainRow, 2, 1, HEADERS.length - 1).clearContent();
+  Logger.log("deleteDay_: limpo linha " + mainRow + " (data preservada na col A)");
+  return { success: true };
+}
+
+function getMonthData_(monthStr) {
+  const [y, m] = monthStr.split("-");
+  const sheetName = MESES_PT[parseInt(m, 10) - 1] + " " + y;
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheet = ss.getSheetByName(sheetName);
+  if (!sheet) return { days: [] };
+
+  const data = sheet.getDataRange().getValues();
+  const byDate = {};
+
+  for (let i = 1; i < data.length; i++) {
+    const row = data[i];
+    const dateStr = formatDate_(row[COLS.data - 1]);
+    if (!dateStr) continue;
+    if (!byDate[dateStr]) {
+      byDate[dateStr] = {
+        date: dateStr,
+        kmInicial: row[COLS.kmsIniciais - 1] || "",
+        kmFinal: row[COLS.kmsFinais - 1] || "",
+        valorFaturado: row[COLS.faturado - 1] || "",
+        multibanco: row[COLS.multibanco - 1] || "",
+        portagens: row[COLS.portagens - 1] || "",
+        combustivel: row[COLS.combustivel - 1] || "",
+        obs: row[COLS.obs - 1] || "",
+        expenses: []
+      };
+    }
+    const valor = row[COLS.outrasDespesas - 1];
+    const tipo = row[COLS.tipo - 1];
+    if (valor && tipo) {
+      byDate[dateStr].expenses.push({ category: tipo, valor: valor, desc: row[COLS.obs - 1] || "" });
+    }
+  }
+  return { days: Object.values(byDate) };
+}
+
+function getAllData_() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const sheets = ss.getSheets();
+  const allDays = [];
+  sheets.forEach(sheet => {
+    const name = sheet.getName();
+    const isMonthSheet = MESES_PT.some(mes => name.startsWith(mes + " "));
+    if (!isMonthSheet) return;
+    const data = sheet.getDataRange().getValues();
+    const byDate = {};
+    for (let i = 1; i < data.length; i++) {
+      const row = data[i];
+      const dateStr = formatDate_(row[COLS.data - 1]);
+      if (!dateStr) continue;
+      if (!byDate[dateStr]) {
+        byDate[dateStr] = {
+          date: dateStr,
+          kmInicial: row[COLS.kmsIniciais - 1] || "",
+          kmFinal: row[COLS.kmsFinais - 1] || "",
+          valorFaturado: row[COLS.faturado - 1] || "",
+          multibanco: row[COLS.multibanco - 1] || "",
+          portagens: row[COLS.portagens - 1] || "",
+          combustivel: row[COLS.combustivel - 1] || "",
+          obs: row[COLS.obs - 1] || "",
+          expenses: []
+        };
       }
-    });
+      const valor = row[COLS.outrasDespesas - 1];
+      const tipo = row[COLS.tipo - 1];
+      if (valor && tipo) {
+        byDate[dateStr].expenses.push({ category: tipo, valor: valor, desc: "" });
+      }
+    }
+    allDays.push(...Object.values(byDate));
   });
-
-  const modal = h("div",{style:{position:"fixed",inset:"0",background:"#000c",display:"flex",alignItems:"flex-end",justifyContent:"center",zIndex:"200"},
-    onclick:e=>{if(e.target===e.currentTarget){S.viaturaMod=false;render();}}},
-    h("div",{style:{background:"#1a1a1a",borderRadius:"20px 20px 0 0",width:"100%",maxWidth:"420px",maxHeight:"85vh",display:"flex",flexDirection:"column"}},
-      // Header
-              h("div",{style:{padding:"20px 20px 12px",borderBottom:"1px solid #333",display:"flex",justifyContent:"space-between",alignItems:"center"}},
-        h("div",{},
-          h("div",{style:{fontWeight:"800",fontSize:"17px",color:"#facc15"}},"🔧 Histórico da Viatura"),
-          h("div",{style:{fontSize:"11px",color:"#666",marginTop:"2px"}},"Extintor · Inspeção · Oficina · Outros")
-        ),
-        h("div",{style:{display:"flex",gap:"8px"}},
-          h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"12px",cursor:"pointer"},
-            onclick:async()=>{
-              // Carrega todos os meses do ano corrente
-              const ano=today().slice(0,4);
-              const meses=["01","02","03","04","05","06","07","08","09","10","11","12"];
-              S.loadedMonths={};
-              for(const m of meses){ await loadMonth(ano+"-"+m); }
-              render();
-            }},"🔄"),
-          h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"12px",cursor:"pointer"},
-            onclick:()=>{S.viaturaMod=false;render();}},"✕ Fechar")
-        )
-      ),
-      // Conteúdo
-      h("div",{style:{overflowY:"auto",padding:"16px",flex:"1"}},
-        registos.length===0
-          ? h("div",{style:{textAlign:"center",color:"#555",padding:"40px"}},"Sem registos de manutenção ainda.")
-          : h("div",{},
-              // Resumo
-              h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"8px",marginBottom:"16px"}},
-                ...["Extintor","Inspeção","Oficina","Outros"].map(cat=>{
-                  const total=registos.filter(r=>r.category===cat).reduce((s,r)=>s+r.valor,0);
-                  const count=registos.filter(r=>r.category===cat).length;
-                  return count>0?h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"10px 14px"}},
-                    h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"2px"}},cat+" ("+count+"x)"),
-                    h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(total))
-                  ):null;
-                }).filter(Boolean)
-              ),
-              h("div",{style:{fontSize:"11px",color:"#555",marginBottom:"12px",display:"flex",justifyContent:"space-between"}},
-                h("span",{},"Total: "+registos.length+" registos"),
-                h("span",{style:{color:"#f87171",fontWeight:"700"}},"Total gasto: "+eur(registos.reduce((s,r)=>s+r.valor,0)))
-              ),
-              // Lista
-              ...registos.slice().reverse().map(r=>{
-                const colors={Extintor:"#60a5fa",Inspeção:"#4ade80",Oficina:"#f87171",Outros:"#facc15"};
-                const color=colors[r.category]||"#aaa";
-                return h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"12px 14px",marginBottom:"8px",borderLeft:"3px solid "+color}},
-                  h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:"4px"}},
-                    h("div",{},
-                      h("div",{style:{fontWeight:"700",fontSize:"13px",color}},"🔧 "+r.category),
-                      r.desc?h("div",{style:{fontSize:"12px",color:"#aaa",marginTop:"2px"}},r.desc):null
-                    ),
-                    h("div",{style:{textAlign:"right"}},
-                      h("div",{style:{fontWeight:"800",fontSize:"15px",color:"#f87171"}},eur(r.valor)),
-                      r.km>0?h("div",{style:{fontSize:"11px",color:"#666",marginTop:"2px"}},r.km.toLocaleString()+" km"):null
-                    )
-                  ),
-                  h("div",{style:{fontSize:"11px",color:"#555"}},"📅 "+r.date)
-                );
-              })
-            )
-      )
-    )
-  );
-  return modal;
+  return { days: allDays };
 }
 
-function renderDeleteModal() {
-  return h("div",{style:{position:"fixed",inset:"0",background:"#000b",display:"flex",alignItems:"center",justifyContent:"center",zIndex:"100",padding:"24px"},onclick:e=>{if(e.target===e.currentTarget){S.deleteModal=false;render();}}},
-    h("div",{style:{background:"#1e1e1e",borderRadius:"16px",padding:"24px",width:"100%",maxWidth:"360px"}},
-      h("div",{style:{fontSize:"36px",textAlign:"center",marginBottom:"12px"}},"🗑️"),
-      h("div",{style:{fontWeight:"700",fontSize:"17px",textAlign:"center",marginBottom:"8px"}},"Apagar Registo"),
-      h("div",{style:{fontSize:"13px",color:"#aaa",textAlign:"center",marginBottom:"24px"}},"Apagar o registo de "+S.date+"?"),
-      h("div",{style:{display:"flex",gap:"10px"}},
-        h("button",{style:{flex:"1",padding:"12px",background:"#333",border:"none",borderRadius:"10px",color:"#aaa",fontWeight:"700",cursor:"pointer"},onclick:()=>{S.deleteModal=false;render();}},"Cancelar"),
-        h("button",{style:{flex:"1",padding:"12px",background:"#dc2626",border:"none",borderRadius:"10px",color:"#fff",fontWeight:"700",cursor:"pointer"},onclick:deleteDayFn},"Apagar")
-      )
-    )
-  );
+function testeDiagnostico() {
+  const dateStr = "2026-07-01";
+  const sheet = getOrCreateMonthSheet_(dateStr);
+  const data = sheet.getDataRange().getValues();
+  Logger.log("Nome da folha: " + sheet.getName());
+  Logger.log("Total de linhas: " + data.length);
+  for (let i = 1; i < Math.min(6, data.length); i++) {
+    const raw = data[i][0];
+    const formatted = formatDate_(raw);
+    Logger.log("Linha " + (i+1) + ": raw=" + raw + " | formatado=" + formatted + " | igual=" + (formatted === dateStr));
+  }
+  const mainRow = findMainRowForDate_(sheet, dateStr);
+  Logger.log("Linha encontrada: " + mainRow);
 }
-
-function renderExpModal() {
-  return h("div",{style:{position:"fixed",inset:"0",background:"#000a",display:"flex",alignItems:"flex-end",zIndex:"100"},onclick:e=>{if(e.target===e.currentTarget){S.expModal=false;render();}}},
-    h("div",{style:{background:"#1e1e1e",borderRadius:"20px 20px 0 0",padding:"24px",width:"100%",maxWidth:"420px",margin:"0 auto"}},
-      h("div",{style:{fontWeight:"700",fontSize:"16px",marginBottom:"16px",color:"#f87171"}},S.editExpIdx!==null?"✏️ Editar Despesa":"➕ Nova Despesa"),
-      h("div",{style:{marginBottom:"12px"}},
-        h("span",{style:{fontSize:"11px",color:"#888",display:"block",marginBottom:"6px"}},"Tipo"),
-        h("div",{style:{display:"flex",flexWrap:"wrap",gap:"6px"}},...CATS.map(c=>h("button",{style:{padding:"6px 12px",borderRadius:"8px",border:"none",cursor:"pointer",fontSize:"12px",fontWeight:"600",background:S.expForm.cat===c?"#f87171":"#2a2a2a",color:S.expForm.cat===c?"#fff":"#aaa"},onclick:()=>{S.expForm.cat=c;render();}},c)))
-      ),
-      h("div",{style:{marginBottom:"12px"}},
-        h("span",{style:{fontSize:"11px",color:"#888",display:"block",marginBottom:"6px"}},"Descrição (opcional)"),
-        h("input",{class:"inp",placeholder:"Ex: Oficina XPTO",value:S.expForm.desc,style:{fontSize:"14px"},oninput:e=>{S.expForm.desc=e.target.value;}})
-      ),
-      h("div",{style:{marginBottom:"20px"}},
-        h("span",{style:{fontSize:"11px",color:"#888",display:"block",marginBottom:"6px"}},"Valor (€)"),
-        h("input",{type:"number",class:"inp",placeholder:"0.00",value:S.expForm.val,style:{fontSize:"20px",fontWeight:"700"},oninput:e=>{S.expForm.val=e.target.value;}})
-      ),
-      h("div",{style:{display:"flex",gap:"10px"}},
-        h("button",{style:{flex:"1",padding:"12px",background:"#333",border:"none",borderRadius:"10px",color:"#aaa",fontWeight:"700",cursor:"pointer"},onclick:()=>{S.expModal=false;render();}},"Cancelar"),
-        h("button",{style:{flex:"2",padding:"12px",background:"#f87171",border:"none",borderRadius:"10px",color:"#fff",fontWeight:"700",cursor:"pointer",fontSize:"15px"},
-          onclick:()=>{
-            if(!S.expForm.val)return;
-            const exp={category:S.expForm.cat,desc:S.expForm.desc,valor:S.expForm.val};
-            if(S.editExpIdx!==null) B.exps[S.editExpIdx]=exp;
-            else B.exps.push(exp);
-            S.expModal=false;render();
-          }},S.editExpIdx!==null?"Guardar":"Adicionar")
-      )
-    )
-  );
-}
-
-// Inicializa
-render();
-loadMonth(S.date.slice(0,7)).then(()=>{B=initBuf(S.date);render();});
-</script>
-</body>
-</html>
