@@ -137,6 +137,13 @@ async function saveDay() {
     S.saved=true;S.syncing=false;updateStatus();
     setTimeout(()=>{S.saved=false;updateStatus();},2000);
     enviarEmailDia(date, B, calc(B));
+    // Verificar se é o último dia do mês
+    const [_y,_m,_d]=date.split("-").map(Number);
+    const ultimoDia=new Date(_y,_m,0).getDate();
+    if(_d===ultimoDia){
+      await loadMonth(date.slice(0,7));
+      enviarEmailMensal(date.slice(0,7));
+    }
   }catch(e){S.err="Falha: "+e.message;S.syncing=false;updateStatus();}
 }
 async function deleteDayFn() {
@@ -723,8 +730,8 @@ function renderExpModal() {
 
 // --- EMAIL RELATÓRIO ---
 // CONFIGURAÇÃO EMAILJS - preencher após criar conta em emailjs.com
-const EJS_SERVICE   = "service_yjnyu9p";
-const EJS_TEMPLATE  = "m8bbtqa";
+const EJS_SERVICE   = "service_a73brnc";
+const EJS_TEMPLATE  = "5sw830u";
 const EJS_PUBLIC    = "ZA-g20FHyXLdVkWwL";
 const EJS_EMAILS    = ["ruijemilio@hotmail.com","ricardosemilio@hotmail.com"];
 
@@ -899,6 +906,152 @@ async function enviarEmailDia(date, b, c) {
     console.log("Emails enviados com sucesso");
   } catch(e) {
     console.warn("Erro ao enviar email:", e);
+  }
+}
+
+// --- EMAIL RELATÓRIO MENSAL ---
+function buildEmailMensal(mes, registos) {
+  const [y,m] = mes.split("-");
+  const nomesMeses=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+  const nomeMes = nomesMeses[parseInt(m)-1] + " " + y;
+
+  let diasTrab=0, totKm=0, totFat=0, totMb=0, totComb=0, totPort=0, totOutras=0, totDep=0, totCom=0, totEntr=0;
+  const linhasDias = [];
+
+  Object.entries(registos).filter(([d])=>d.startsWith(mes)).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([date,r])=>{
+    const b2={kmI:r.kmInicial,kmF:r.kmFinal,fat:r.valorFaturado,mb:r.multibanco,port:r.portagens,comb:r.combustivel,obs:r.obs,exps:r.expenses||[]};
+    const c2=calc(b2);
+    if((parseFloat(r.valorFaturado)||0)>0){
+      diasTrab++;
+      totKm+=c2.tkm; totFat+=c2.fat; totMb+=c2.mb; totComb+=c2.comb;
+      totPort+=c2.port; totOutras+=c2.outras; totDep+=c2.dep; totCom+=c2.com; totEntr+=c2.entr;
+      const [,, dd]=date.split("-");
+      linhasDias.push(`<tr style="border-bottom:1px solid #2a2a2a;">
+        <td style="padding:6px 8px;color:#aaa;font-size:12px;">${dd}/${m}</td>
+        <td style="padding:6px 8px;color:#4ade80;font-size:12px;text-align:right;">${eur(c2.fat)}</td>
+        <td style="padding:6px 8px;color:#c084fc;font-size:12px;text-align:right;">${eur(c2.com)}</td>
+        <td style="padding:6px 8px;color:#facc15;font-size:12px;text-align:right;">${c2.tkm} km</td>
+        <td style="padding:6px 8px;color:#4ade80;font-size:12px;text-align:right;">${eur(c2.entr)}</td>
+      </tr>`);
+    }
+  });
+
+  const mediaDia = diasTrab>0 ? totFat/diasTrab : 0;
+  const totDesp = totComb+totPort+totOutras;
+
+  return `<!DOCTYPE html>
+<html lang="pt">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:system-ui,-apple-system,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:24px 0;">
+<tr><td align="center">
+<table width="100%" style="max-width:580px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);">
+
+  <!-- HEADER -->
+  <tr><td style="background:#1a1a1a;padding:28px 32px;text-align:center;">
+    <div style="font-size:36px;margin-bottom:8px;">🚕</div>
+    <div style="color:#facc15;font-size:22px;font-weight:800;letter-spacing:1px;">MJE Transporte</div>
+    <div style="color:#888;font-size:13px;margin-top:4px;">Relatório Mensal</div>
+  </td></tr>
+
+  <!-- MÊS -->
+  <tr><td style="background:#facc15;padding:14px 32px;text-align:center;">
+    <div style="color:#111;font-size:18px;font-weight:800;">📅 ${nomeMes}</div>
+  </td></tr>
+
+  <!-- RESUMO -->
+  <tr><td style="padding:28px 32px 0;">
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="background:#1e1e1e;border-radius:12px;padding:20px;">
+          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;">📊 Resumo do Mês</div>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:5px 0;">Dias Trabalhados</td>
+              <td align="right" style="color:#facc15;font-weight:700;font-size:13px;">${diasTrab} dias</td>
+            </tr>
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:5px 0;">KMs Totais</td>
+              <td align="right" style="color:#facc15;font-weight:700;font-size:13px;">${totKm.toLocaleString()} km</td>
+            </tr>
+            <tr><td colspan="2" style="border-top:1px solid #333;padding:4px 0;"></td></tr>
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:5px 0;">Total Faturado</td>
+              <td align="right" style="color:#4ade80;font-weight:700;font-size:13px;">${eur(totFat)}</td>
+            </tr>
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:5px 0;">Média Diária Faturado</td>
+              <td align="right" style="color:#4ade80;font-weight:700;font-size:13px;">${eur(mediaDia)}</td>
+            </tr>
+            <tr><td colspan="2" style="border-top:1px solid #333;padding:4px 0;"></td></tr>
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:5px 0;">Comissão Total (c/ IVA)</td>
+              <td align="right" style="color:#c084fc;font-weight:700;font-size:13px;">${eur(totCom)}</td>
+            </tr>
+            <tr><td colspan="2" style="border-top:1px solid #333;padding:4px 0;"></td></tr>
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:5px 0;">Total Combustível</td>
+              <td align="right" style="color:#f87171;font-weight:700;font-size:13px;">${eur(totComb)}</td>
+            </tr>
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:5px 0;">Total Despesas</td>
+              <td align="right" style="color:#f87171;font-weight:700;font-size:13px;">${eur(totDesp)}</td>
+            </tr>
+            <tr><td colspan="2" style="border-top:1px solid #333;padding:4px 0;"></td></tr>
+            <tr>
+              <td style="color:#fff;font-size:15px;font-weight:700;padding:6px 0;">Total a Entregar</td>
+              <td align="right" style="color:#4ade80;font-weight:800;font-size:16px;">${eur(totEntr)}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+  </td></tr>
+
+  <!-- TABELA DIAS -->
+  <tr><td style="padding:20px 32px 0;">
+    <div style="color:#555;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px;">📋 Detalhe por Dia</div>
+    <table width="100%" cellpadding="0" cellspacing="0" style="background:#1e1e1e;border-radius:12px;overflow:hidden;">
+      <tr style="background:#2a2a2a;">
+        <td style="padding:8px 8px;color:#666;font-size:11px;font-weight:700;">Dia</td>
+        <td style="padding:8px 8px;color:#666;font-size:11px;font-weight:700;text-align:right;">Faturado</td>
+        <td style="padding:8px 8px;color:#666;font-size:11px;font-weight:700;text-align:right;">Comissão</td>
+        <td style="padding:8px 8px;color:#666;font-size:11px;font-weight:700;text-align:right;">KMs</td>
+        <td style="padding:8px 8px;color:#666;font-size:11px;font-weight:700;text-align:right;">Entregar</td>
+      </tr>
+      ${linhasDias.join("")}
+    </table>
+  </td></tr>
+
+  <!-- FOOTER -->
+  <tr><td style="background:#1a1a1a;padding:20px 32px;text-align:center;margin-top:28px;">
+    <div style="color:#555;font-size:11px;">MJE — Transporte Ocasional de Passageiros</div>
+    <div style="color:#444;font-size:10px;margin-top:4px;">Relatório Mensal gerado automaticamente</div>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+async function enviarEmailMensal(mes) {
+  try {
+    emailjs.init({publicKey: EJS_PUBLIC});
+    const html = buildEmailMensal(mes, S.records);
+    const [y,m] = mes.split("-");
+    const nomesMeses=["Janeiro","Fevereiro","Março","Abril","Maio","Junho","Julho","Agosto","Setembro","Outubro","Novembro","Dezembro"];
+    const assunto = "📊 Relatório Mensal — " + nomesMeses[parseInt(m)-1] + " " + y;
+    await Promise.all(EJS_EMAILS.map(email =>
+      emailjs.send(EJS_SERVICE, EJS_TEMPLATE, {
+        to_email: email,
+        subject: assunto,
+        html_content: html
+      })
+    ));
+    console.log("Relatório mensal enviado com sucesso");
+  } catch(e) {
+    console.warn("Erro ao enviar relatório mensal:", e);
   }
 }
 
