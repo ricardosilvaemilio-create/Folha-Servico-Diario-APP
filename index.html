@@ -18,10 +18,35 @@
   .row { display:flex; justify-content:space-between; align-items:center; font-size:13px; margin-bottom:6px; }
   .spin { animation:spin 1s linear infinite; display:inline-block; }
   @keyframes spin { to { transform:rotate(360deg); } }
+  #login-screen { position:fixed; inset:0; background:#111; display:flex; align-items:center; justify-content:center; z-index:999; padding:24px; }
+  #login-box { background:#1e1e1e; border-radius:20px; padding:32px 24px; width:100%; max-width:360px; text-align:center; }
+  #login-box .taxi-icon { font-size:48px; margin-bottom:8px; }
+  #login-box h2 { margin:0 0 4px; font-size:20px; color:#facc15; }
+  #login-box p { margin:0 0 24px; font-size:13px; color:#666; }
+  #login-input { background:#2a2a2a; color:#fff; border:2px solid #333; border-radius:10px; padding:12px 16px; width:100%; font-size:18px; outline:none; text-align:center; letter-spacing:4px; transition:border-color .2s; }
+  #login-input:focus { border-color:#facc15; }
+  #login-btn { margin-top:14px; width:100%; padding:13px; background:#facc15; border:none; border-radius:10px; color:#111; font-weight:800; font-size:16px; cursor:pointer; transition:opacity .2s; }
+  #login-btn:hover { opacity:.85; }
+  #login-err { color:#f87171; font-size:13px; margin-top:10px; min-height:18px; }
+  #login-remember { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:14px; font-size:13px; color:#aaa; cursor:pointer; }
+  #login-remember input { width:16px; height:16px; accent-color:#facc15; cursor:pointer; }
 </style>
 </head>
 <body>
-<div id="app"></div>
+<div id="login-screen">
+  <div id="login-box">
+    <div class="taxi-icon">🚕</div>
+    <h2>Folha de Serviço</h2>
+    <p>Registo Diário de Táxi</p>
+    <input id="login-input" type="password" placeholder="••••••" maxlength="20" autocomplete="current-password" />
+    <button id="login-btn" onclick="tentarLogin()">Entrar</button>
+    <div id="login-err"></div>
+    <label id="login-remember">
+      <input type="checkbox" id="login-lembrar" /> Lembrar durante 7 dias
+    </label>
+  </div>
+</div>
+<div id="app" style="display:none"></div>
 <div id="modals"></div>
 <script>
 const BACKEND_URL = "https://script.google.com/macros/s/AKfycbxneL-oZ7UXtoO9Z9hlM6iZQE4BNFubuAy2tY7BV29kMc0YEE7EqGNTEyk9WiCBbheuzQ/exec";
@@ -498,14 +523,17 @@ function renderAnual() {
   wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#f87171",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"⛽ Combustível"));
   const cg=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"10px",marginBottom:"16px"}});
   meses.forEach(m=>{if(parseFloat(m.comb2026)>0)cg.append(h("div",{style:{background:"#1e1e1e",borderRadius:"10px",padding:"10px 14px"}},h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},m.mes),h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(m.comb2026))));});
-  cg.append(h("div",{style:{background:"#2e1a1a",borderRadius:"10px",padding:"10px 14px",border:"1px solid #f8717133"}},h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},"Total"),h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(totais.comb2026))));
+  const _hoje=today(),_anoAtual=_hoje.slice(0,4),_mesAtual=parseInt(_hoje.slice(5,7));
+  const _mesesComComb=meses.filter(m=>m.mes.startsWith(_anoAtual)&&parseFloat(m.comb2026)>0).length;
+  const _mesesDecorridos=Math.max(_mesesComComb,_mesAtual);
+  const _mediaMensComb=_mesesDecorridos>0?(parseFloat(totais.comb2026)||0)/_mesesDecorridos:0;
+  cg.append(h("div",{style:{background:"#2e1a1a",borderRadius:"10px",padding:"10px 14px",border:"1px solid #f8717133"}},
+    h("div",{style:{fontSize:"11px",color:"#666",marginBottom:"4px"}},"Total"),
+    h("div",{style:{fontWeight:"700",fontSize:"15px",color:"#f87171"}},eur(totais.comb2026)),
+    h("div",{style:{fontSize:"10px",color:"#f8717199",marginTop:"4px"}},"Média mensal: "+eur(_mediaMensComb))
+  ));
   wrap.append(cg);
-  if(previsao&&Object.keys(previsao).length>0){
-    wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#c084fc",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"📈 Previsão do Ano"));
-    const pc=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
-    Object.values(previsao).forEach(p=>{if(!p.label)return;pc.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"8px"}},h("span",{style:{color:"#aaa"}},p.label),h("span",{style:{color:"#c084fc",fontWeight:"700"}},eur(p.valor))));});
-    wrap.append(pc);
-  }
+
   if(viatura&&viatura.length>0){
     wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#60a5fa",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"🚕 Viatura"));
     const vc=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
@@ -534,16 +562,29 @@ function renderAnual() {
   const diasMes=new Date(aM,mM,0).getDate();
   const prevFatMes=mediaFatDia*diasMes;
   const prevComMes=prevFatMes*0.40*1.23;
-  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#4ade80",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"🔮 Previsão Viatura"));
-  const pcc=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
   const prow=(label,valor,color)=>h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"10px",paddingBottom:"10px",borderBottom:"1px solid #2a2a2a"}},
     h("span",{style:{color:"#aaa",flex:"1"}},label),h("span",{style:{color:color||"#4ade80",fontWeight:"700"}},valor));
-  pcc.append(
-    prow("🛣️ Previsão KM Percorridos no Ano",Number(prevKmAno).toLocaleString()+" km","#facc15"),
-    prow("🔮 Previsão KM Viatura Final do Ano",Number(prevKmViatura).toLocaleString()+" km","#facc15"),
-    h("div",{style:{height:"8px"}}),
+
+  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#38bdf8",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"📅 Previsão Mensal"));
+  const pmm=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
+  pmm.append(
     prow("📅 Previsão Faturado Mês ("+mesAtual+")",eur(prevFatMes),"#4ade80"),
     prow("📊 Previsão Comissão Mês ("+mesAtual+")",eur(prevComMes),"#c084fc")
+  );
+  wrap.append(pmm);
+
+  if(previsao&&Object.keys(previsao).length>0){
+    wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#c084fc",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"📈 Previsão do Ano"));
+    const pc=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
+    Object.values(previsao).forEach(p=>{if(!p.label)return;pc.append(h("div",{style:{display:"flex",justifyContent:"space-between",fontSize:"13px",marginBottom:"8px"}},h("span",{style:{color:"#aaa"}},p.label),h("span",{style:{color:"#c084fc",fontWeight:"700"}},eur(p.valor))));});
+    wrap.append(pc);
+  }
+
+  wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#4ade80",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"🔮 Previsão Viatura"));
+  const pcc=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"16px"}});
+  pcc.append(
+    prow("🛣️ Previsão KM Percorridos no Ano",Number(prevKmAno).toLocaleString()+" km","#facc15"),
+    prow("🔮 Previsão KM Viatura Final do Ano",Number(prevKmViatura).toLocaleString()+" km","#facc15")
   );
   wrap.append(pcc);
   return wrap;
@@ -666,8 +707,45 @@ function renderExpModal() {
   );
 }
 
-render();
-loadMonth(S.date.slice(0,7)).then(()=>{B=initBuf(S.date);render();});
+// --- LOGIN ---
+const LOGIN_KEY = "fsd_session";
+const LOGIN_HASH = "7d4e9f2a1b3c8e6d"; // hash simples de "cr4"
+function hashSimples(str){ let h=0;for(let i=0;i<str.length;i++){h=((h<<5)-h)+str.charCodeAt(i);h|=0;}return Math.abs(h).toString(16); }
+function sessaoValida(){
+  try{
+    const s=JSON.parse(localStorage.getItem(LOGIN_KEY)||"null");
+    if(!s)return false;
+    if(s.expiry&&Date.now()>s.expiry){localStorage.removeItem(LOGIN_KEY);return false;}
+    return s.auth===LOGIN_HASH;
+  }catch(e){return false;}
+}
+function tentarLogin(){
+  const pw=document.getElementById("login-input").value;
+  const err=document.getElementById("login-err");
+  if(hashSimples(pw)===hashSimples("cr4")){
+    const lembrar=document.getElementById("login-lembrar").checked;
+    const session={auth:LOGIN_HASH,expiry:lembrar?Date.now()+7*24*60*60*1000:null};
+    if(lembrar)localStorage.setItem(LOGIN_KEY,JSON.stringify(session));
+    document.getElementById("login-screen").style.display="none";
+    document.getElementById("app").style.display="";
+    render();
+    loadMonth(S.date.slice(0,7)).then(()=>{B=initBuf(S.date);render();});
+  } else {
+    err.textContent="Password incorreta. Tenta novamente.";
+    document.getElementById("login-input").value="";
+    document.getElementById("login-input").focus();
+  }
+}
+document.addEventListener("DOMContentLoaded",()=>{
+  const inp=document.getElementById("login-input");
+  if(inp)inp.addEventListener("keydown",e=>{if(e.key==="Enter")tentarLogin();});
+});
+if(sessaoValida()){
+  document.getElementById("login-screen").style.display="none";
+  document.getElementById("app").style.display="";
+  render();
+  loadMonth(S.date.slice(0,7)).then(()=>{B=initBuf(S.date);render();});
+}
 </script>
 </body>
 </html>
