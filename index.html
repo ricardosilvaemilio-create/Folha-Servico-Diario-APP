@@ -480,9 +480,11 @@ function renderAnual() {
     h("button",{style:{background:"#333",border:"none",borderRadius:"8px",padding:"6px 12px",color:"#aaa",fontSize:"11px",cursor:"pointer"},onclick:()=>{S.anual=null;render();}},"🔄 Atualizar")
   ));
   wrap.append(h("div",{style:{fontWeight:"700",fontSize:"13px",color:"#facc15",marginBottom:"8px",textTransform:"uppercase",letterSpacing:"1px"}},"💶 Faturação Mensal"));
+  const anoCorrente = new Date().getFullYear();
+  const anoAnterior = anoCorrente - 1;
   const table=h("div",{style:{background:"#1e1e1e",borderRadius:"12px",overflow:"hidden",marginBottom:"16px"}});
   const hdr=h("div",{style:{display:"grid",gridTemplateColumns:"1fr 1fr 1fr 1fr",gap:"4px",padding:"8px 12px",background:"#2a2a2a",fontSize:"11px",color:"#666",fontWeight:"700"}});
-  ["Mês","Fat. 2026","Fat. 2025","KMs"].forEach(t=>hdr.append(h("span",{},t)));
+  ["Mês","Fat. "+anoCorrente,"Fat. "+anoAnterior,"KMs"].forEach(t=>hdr.append(h("span",{},t)));
   table.append(hdr);
   meses.forEach((m,i)=>{
     const f25=parseFloat(m.fat2025)||0;
