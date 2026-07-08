@@ -494,15 +494,9 @@ function renderResumoMensal() {
   wrap.append(h("div",{style:{fontSize:"11px",color:"#c084fc",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"📊 Comissão"));
   wrap.append(h("div",{style:{background:"#1e1e1e",borderRadius:"12px",padding:"16px",marginBottom:"10px",border:"1px solid #c084fc33"}},
     h("div",{style:{fontSize:"11px",color:"#777",marginBottom:"6px"}},"🧾 Comissão do Motorista"),
-    h("div",{style:{display:"flex",alignItems:"baseline",gap:"8px",marginBottom:"6px"}},
-      h("div",{style:{fontWeight:"800",fontSize:"22px",color:"#c084fc"}},eur(tComB)),
-      h("div",{style:{fontSize:"11px",color:"#888"}},"s/ IVA")
-    ),
-    h("div",{style:{fontSize:"11px",color:"#888",marginBottom:"8px"}},"IVA 23%: "+eur(tIva)),
-    h("div",{style:{background:"#2a1a3a",borderRadius:"8px",padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center"}},
-      h("div",{style:{fontSize:"11px",color:"#c084fc",fontWeight:"700"}},"Total c/ IVA"),
-      h("div",{style:{fontSize:"18px",fontWeight:"900",color:"#e879f9"}},eur(tCom))
-    )
+    h("div",{style:{fontWeight:"800",fontSize:"22px",color:"#c084fc",marginBottom:"6px"}},eur(tCom)),
+    h("div",{style:{fontSize:"11px",color:"#888",marginBottom:"2px"}},"Comissão s/ IVA: "+eur(tComB)),
+    h("div",{style:{fontSize:"11px",color:"#888"}},"IVA 23%: "+eur(tIva))
   ));
   wrap.append(h("div",{style:{fontSize:"11px",color:"#4ade80",fontWeight:"700",letterSpacing:"1px",margin:"16px 0 8px",textTransform:"uppercase"}},"💰 Valor a Entregar"));
   const card=h("div",{style:{background:tEntr>=0?"#1a2e1a":"#2e1a1a",border:`1px solid ${tEntr>=0?"#4ade80":"#f87171"}55`,borderRadius:"14px",padding:"18px",marginBottom:"10px"}});
