@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Folha de Serviço Diário - Táxi</title>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: system-ui, -apple-system, sans-serif; background: #111; color: #fff; }
@@ -135,6 +136,7 @@ async function saveDay() {
     await apiPost({action:"saveDay",data:date,day:{kmInicial:B.kmI,kmFinal:B.kmF,valorFaturado:B.fat,multibanco:B.mb,portagens:B.port,combustivel:B.comb,obs:B.obs,expenses:B.exps}});
     S.saved=true;S.syncing=false;updateStatus();
     setTimeout(()=>{S.saved=false;updateStatus();},2000);
+    enviarEmailDia(date, B, calc(B));
   }catch(e){S.err="Falha: "+e.message;S.syncing=false;updateStatus();}
 }
 async function deleteDayFn() {
@@ -717,6 +719,187 @@ function renderExpModal() {
       )
     )
   );
+}
+
+// --- EMAIL RELATÓRIO ---
+// CONFIGURAÇÃO EMAILJS - preencher após criar conta em emailjs.com
+const EJS_SERVICE   = "service_yjnyu9p";
+const EJS_TEMPLATE  = "m8bbtqa";
+const EJS_PUBLIC    = "ZA-g20FHyXLdVkWwL";
+const EJS_EMAILS    = ["ruijemilio@hotmail.com","ricardosemilio@hotmail.com"];
+
+function buildEmailHTML(date, b, c) {
+  const diasSemana=["Domingo","Segunda","Terça","Quarta","Quinta","Sexta","Sábado"];
+  const [y,m,d]=date.split("-");
+  const ds=diasSemana[new Date(date).getDay()];
+  const dataFmt=ds+", "+d+"/"+m+"/"+y;
+  const depStr=(b.exps||[]).filter(e=>e.category==="Depósito").map(e=>e.desc?e.desc+" ("+eur(e.valor)+")":eur(e.valor)).join(", ")||"—";
+  const despStr=(b.exps||[]).filter(e=>e.category!=="Depósito").map(e=>e.category+(e.desc?" - "+e.desc:"")+" ("+eur(e.valor)+")").join("<br>‌&nbsp;&nbsp;&nbsp;&nbsp;")||"—";
+  return `
+<!DOCTYPE html>
+<html lang="pt">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f4f4f4;font-family:system-ui,-apple-system,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f4f4f4;padding:24px 0;">
+<tr><td align="center">
+<table width="100%" style="max-width:520px;background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,0.10);">
+
+  <!-- HEADER -->
+  <tr><td style="background:#1a1a1a;padding:28px 32px;text-align:center;">
+    <div style="font-size:36px;margin-bottom:8px;">🚕</div>
+    <div style="color:#facc15;font-size:22px;font-weight:800;letter-spacing:1px;">MJE Transporte</div>
+    <div style="color:#888;font-size:13px;margin-top:4px;">Folha de Serviço Diário</div>
+  </td></tr>
+
+  <!-- DATA -->
+  <tr><td style="background:#facc15;padding:12px 32px;text-align:center;">
+    <div style="color:#111;font-size:16px;font-weight:700;">📅 ${dataFmt}</div>
+  </td></tr>
+
+  <!-- BODY -->
+  <tr><td style="padding:28px 32px;">
+
+    <!-- KMs -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+      <tr>
+        <td style="background:#1e1e1e;border-radius:12px;padding:16px 20px;">
+          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">🛣️ Quilómetros</div>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:4px 0;">KM Inicial</td>
+              <td align="right" style="color:#facc15;font-weight:700;font-size:13px;">${Number(b.kmI||0).toLocaleString()} km</td>
+            </tr>
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:4px 0;">KM Final</td>
+              <td align="right" style="color:#facc15;font-weight:700;font-size:13px;">${Number(b.kmF||0).toLocaleString()} km</td>
+            </tr>
+            <tr><td colspan="2" style="border-top:1px solid #333;padding-top:8px;margin-top:8px;"></td></tr>
+            <tr>
+              <td style="color:#fff;font-size:14px;font-weight:700;padding-top:4px;">Total Percorrido</td>
+              <td align="right" style="color:#facc15;font-weight:800;font-size:15px;">${c.tkm.toLocaleString()} km</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <!-- FATURAÇÃO -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+      <tr>
+        <td style="background:#1e1e1e;border-radius:12px;padding:16px 20px;">
+          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">💶 Faturação</div>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:4px 0;">Total Faturado</td>
+              <td align="right" style="color:#4ade80;font-weight:700;font-size:13px;">${eur(c.fat)}</td>
+            </tr>
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:4px 0;">Dinheiro</td>
+              <td align="right" style="color:#60a5fa;font-weight:700;font-size:13px;">${eur(c.din)}</td>
+            </tr>
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:4px 0;">Multibanco</td>
+              <td align="right" style="color:#60a5fa;font-weight:700;font-size:13px;">${eur(c.mb)}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <!-- COMISSÃO -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+      <tr>
+        <td style="background:#1e1e1e;border-radius:12px;padding:16px 20px;">
+          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">📊 Comissão</div>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:4px 0;">Comissão Base (40%)</td>
+              <td align="right" style="color:#c084fc;font-weight:700;font-size:13px;">${eur(c.comB)}</td>
+            </tr>
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:4px 0;">IVA (23%)</td>
+              <td align="right" style="color:#c084fc;font-weight:700;font-size:13px;">${eur(c.ivaV)}</td>
+            </tr>
+            <tr><td colspan="2" style="border-top:1px solid #333;padding-top:8px;"></td></tr>
+            <tr>
+              <td style="color:#fff;font-size:14px;font-weight:700;padding-top:4px;">Comissão Total (c/ IVA)</td>
+              <td align="right" style="color:#c084fc;font-weight:800;font-size:15px;">${eur(c.com)}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <!-- DESPESAS -->
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:20px;">
+      <tr>
+        <td style="background:#1e1e1e;border-radius:12px;padding:16px 20px;">
+          <div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;">🧾 Despesas</div>
+          <table width="100%" cellpadding="0" cellspacing="0">
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:4px 0;">Combustível</td>
+              <td align="right" style="color:#f87171;font-weight:700;font-size:13px;">${eur(c.comb)}</td>
+            </tr>
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:4px 0;">Portagens</td>
+              <td align="right" style="color:#f87171;font-weight:700;font-size:13px;">${eur(c.port)}</td>
+            </tr>
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:4px 0;vertical-align:top;">Outras Despesas</td>
+              <td align="right" style="color:#f87171;font-weight:700;font-size:13px;">${despStr}</td>
+            </tr>
+            <tr>
+              <td style="color:#aaa;font-size:13px;padding:4px 0;">Depósitos</td>
+              <td align="right" style="color:#60a5fa;font-weight:700;font-size:13px;">${depStr}</td>
+            </tr>
+          </table>
+        </td>
+      </tr>
+    </table>
+
+    <!-- VALOR A ENTREGAR -->
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="background:#14532d;border-radius:12px;padding:20px;text-align:center;border:2px solid #4ade80;">
+          <div style="color:#4ade80;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">💰 Valor a Entregar</div>
+          <div style="color:#ffffff;font-size:32px;font-weight:900;">${eur(c.entr)}</div>
+        </td>
+      </tr>
+    </table>
+
+    ${b.obs?`<table width="100%" cellpadding="0" cellspacing="0" style="margin-top:16px;"><tr><td style="background:#1e1e1e;border-radius:12px;padding:16px 20px;"><div style="color:#888;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;">📝 Observações</div><div style="color:#aaa;font-size:13px;">${b.obs}</div></td></tr></table>`:""}
+
+  </td></tr>
+
+  <!-- FOOTER -->
+  <tr><td style="background:#1a1a1a;padding:16px 32px;text-align:center;">
+    <div style="color:#555;font-size:11px;">MJE — Transporte Ocasional de Passageiros</div>
+    <div style="color:#444;font-size:10px;margin-top:4px;">Relatório gerado automaticamente</div>
+  </td></tr>
+
+</table>
+</td></tr>
+</table>
+</body></html>`;
+}
+
+async function enviarEmailDia(date, b, c) {
+  try {
+    emailjs.init({publicKey: EJS_PUBLIC});
+    const html = buildEmailHTML(date, b, c);
+    const [y,m,d] = date.split("-");
+    const assunto = "📋 Folha de Serviço — " + d + "/" + m + "/" + y;
+    await Promise.all(EJS_EMAILS.map(email =>
+      emailjs.send(EJS_SERVICE, EJS_TEMPLATE, {
+        to_email: email,
+        subject: assunto,
+        html_content: html
+      })
+    ));
+    console.log("Emails enviados com sucesso");
+  } catch(e) {
+    console.warn("Erro ao enviar email:", e);
+  }
 }
 
 // --- LOGIN ---
