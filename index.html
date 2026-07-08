@@ -104,12 +104,10 @@ function initBuf(date) {
 async function saveDay() {
   syncDOM();
   const date=S.date;
-  // Converte expenses: envia valor em cêntimos (inteiro) para evitar problema de datas no Sheets
-  const expsParaEnviar = B.exps.map(e=>({...e, valor: Math.round(parseFloat(String(e.valor).replace(",","."))*100)}));
   S.records[date]={kmInicial:B.kmI,kmFinal:B.kmF,valorFaturado:B.fat,multibanco:B.mb,portagens:B.port,combustivel:B.comb,obs:B.obs,expenses:JSON.parse(JSON.stringify(B.exps))};
   S.syncing=true; S.err=""; updateStatus();
   try {
-    await apiPost({action:"saveDay",data:date,day:{kmInicial:B.kmI,kmFinal:B.kmF,valorFaturado:B.fat,multibanco:B.mb,portagens:B.port,combustivel:B.comb,obs:B.obs,expenses:expsParaEnviar}});
+    await apiPost({action:"saveDay",data:date,day:{kmInicial:B.kmI,kmFinal:B.kmF,valorFaturado:B.fat,multibanco:B.mb,portagens:B.port,combustivel:B.comb,obs:B.obs,expenses:B.exps}});
     S.saved=true; S.syncing=false; updateStatus();
     setTimeout(()=>{S.saved=false;updateStatus();},2000);
   } catch(e){S.err="Falha: "+e.message;S.syncing=false;updateStatus();}
