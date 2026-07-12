@@ -815,39 +815,13 @@ async function enviarEmailMensal(mes) {
 
 
 // --- GEOLINK INTEGRAÇÃO ---
-const GEOLINK_COMPANY = "b99cbe6e-5974-4d45-8977-7893a69b26ae";
-const GEOLINK_TOKEN   = "27bda84a-7ec3-47b1-8135-9c84d3ce0d4f";
-
 async function importarGeolink() {
+  const btn = document.getElementById("btn-geolink");
   try {
-    const btn = document.getElementById("btn-geolink");
     if(btn){ btn.textContent="⏳"; btn.disabled=true; }
-
-    const now = new Date();
-    const tz = "Europe/Lisbon";
-    const startOfDay = new Date(now.toLocaleDateString("en-CA", {timeZone:tz}) + "T00:00:00");
-    const endOfDay   = new Date(now.toLocaleDateString("en-CA", {timeZone:tz}) + "T23:59:59");
-    const startTs = Math.floor(startOfDay.getTime() / 1000);
-    const endTs   = Math.floor(endOfDay.getTime() / 1000);
-
-    const form = new FormData();
-    form.append("company_id", GEOLINK_COMPANY);
-    form.append("start_ts", startTs);
-    form.append("end_ts", endTs);
-    form.append("min_limit", 0);
-    form.append("max_limit", 100);
-    form.append("ordered_list", JSON.stringify(["-system_entry_date"]));
-    form.append("filter_type", "AND");
-
-    const resp = await fetch("https://tlbilling.pt/api/company/cash_flow_filtered", {
-      method: "POST",
-      headers: { "x-forwarded-for": GEOLINK_TOKEN },
-      body: form
-    });
-    const data = await resp.json();
-
-    if(data.type === "success" && data.msg && data.msg.invoice_value !== undefined) {
-      const total = Math.round(data.msg.invoice_value * 100) / 100;
+    const data = await apiPost({action:"geolinkDia", date: S.date});
+    if(data.success && data.invoice_value !== undefined) {
+      const total = Math.round(data.invoice_value * 100) / 100;
       B.fat = total.toString();
       const inp = document.getElementById("f_fat");
       if(inp){ inp.value = total; }
@@ -858,7 +832,6 @@ async function importarGeolink() {
       S.err = "Erro ao importar do Geolink"; updateStatus();
     }
   } catch(e) {
-    const btn = document.getElementById("btn-geolink");
     if(btn){ btn.textContent="❌"; btn.disabled=false; setTimeout(()=>{ btn.textContent="🔄 Geolink"; }, 2000); }
     S.err = "Erro de ligação ao Geolink"; updateStatus();
   }
