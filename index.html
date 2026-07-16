@@ -1278,32 +1278,65 @@ table.proposal-grid input:focus{border-color:var(--blue); outline:none;}
 
     // Larguras fixas por coluna — a 2ª coluna (etiquetas curtas tipo
     // "comunicações"/"dados móveis") precisa de mais espaço para não
-    // partir a palavra a meio; a Proposta fica igual à Atualmente.
+    // partir a palavra a meio. Atualmente/Proposta (3ª e 4ª) foram para o
+    // dobro da largura das outras duas, para textos como "3500 min. + 3500
+    // SMS redes nacionais" caberem numa única linha.
     const colWidths = colCount>=4
-      ? ['14%','16%','35%','35%']
+      ? ['8%','9%','41.5%','41.5%']
       : Array(colCount).fill((100/colCount).toFixed(2)+'%');
     const colgroup = `<colgroup>${colWidths.map(w=>`<col style="width:${w};">`).join('')}</colgroup>`;
 
-    // Tabela a dobrar da largura anterior (680px -> 1360px).
-    let html = `<table cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;${FONT}font-size:14px;width:100%;max-width:1360px;table-layout:fixed;">${colgroup}`;
+    // Tabela mais larga para acomodar as colunas de comparação alargadas.
+    let html = `<table cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;${FONT}font-size:14px;width:100%;max-width:2320px;table-layout:fixed;">${colgroup}`;
 
-    rows.forEach(rowRaw=>{
+    // cabeçalho ATUALMENTE/PROPOSTA — normalmente etiqueta exata, mas em
+    // alguns modelos vem como "ATUALMENTE <nome do tarifário>" (célula com
+    // quebra de linha no Excel original, dividida em 2 linhas na extração).
+    const isHeaderCell = v => {
+      const t = (v||'').trim().toUpperCase();
+      return t.indexOf('ATUALMENTE')===0 || t.indexOf('PROPOSTA')===0;
+    };
+
+    // 1ª passagem: classifica cada linha (precisamos disto de antemão para
+    // sabermos, linha a linha, se pertencem a um grupo com etiqueta comum
+    // na 1ª coluna — ex: "TELEMÓVEIS" a abranger 3 linhas de cartões, ou
+    // "EQUIPAMENTOS" a abranger "BASE"/"MOBILITY"/"Site" — tal como no
+    // modelo original, onde essas células vêm unidas verticalmente.
+    const meta = rows.map(rowRaw=>{
       const cells = rowRaw.slice(0, colCount);
       while(cells.length < colCount) cells.push('');
       const label = (cells[0]||'').trim();
       const restFilled = cells.slice(1).some(v=>(v||'').trim()!=='');
-      // cabeçalho ATUALMENTE/PROPOSTA — normalmente etiqueta exata, mas em
-      // alguns modelos vem como "ATUALMENTE <nome do tarifário>" (célula com
-      // quebra de linha no Excel original, dividida em 2 linhas na extração).
-      const isHeaderCell = v => {
-        const t = (v||'').trim().toUpperCase();
-        return t.indexOf('ATUALMENTE')===0 || t.indexOf('PROPOSTA')===0;
-      };
       const isHeaderRow = !label && cells.slice(2).some(isHeaderCell);
       const isBenefit = label.indexOf('>')===0;
       const isLabelValue = /:$/.test(label); // ex: "MORADA:", "Nº DE CONTA:" — par etiqueta/valor, não título
       const isSectionTitle = label && !restFilled && isUpperish(label) && label.length > 3 && !isLabelValue;
       const isFinePrint = label && !restFilled && !isUpperish(label) && !isLabelValue;
+      const isDefault = !isHeaderRow && !isBenefit && !isSectionTitle && !isFinePrint && !isLabelValue;
+      return { cells, label, isHeaderRow, isBenefit, isLabelValue, isSectionTitle, isFinePrint, isDefault, rowspan: 1, skipCol0: false };
+    });
+
+    // 2ª passagem: agrupa linhas "default" consecutivas em que só a
+    // primeira tem etiqueta na coluna 0 e as seguintes vêm em branco nessa
+    // coluna (mas com conteúdo nas outras) — sinal de que, no Excel
+    // original, essa célula estava unida verticalmente.
+    for(let i=0; i<meta.length; i++){
+      const m = meta[i];
+      if(!m.isDefault || !m.label) continue;
+      let span = 1;
+      for(let j=i+1; j<meta.length; j++){
+        const next = meta[j];
+        if(!next.isDefault || next.label) break;
+        const nextRestFilled = next.cells.slice(1).some(v=>(v||'').trim()!=='');
+        if(!nextRestFilled) break;
+        next.skipCol0 = true;
+        span++;
+      }
+      m.rowspan = span;
+    }
+
+    meta.forEach(m=>{
+      const { cells, label, isHeaderRow, isBenefit, isLabelValue, isSectionTitle, isFinePrint, rowspan, skipCol0 } = m;
 
       html += '<tr>';
       if(isHeaderRow){
@@ -1327,6 +1360,7 @@ table.proposal-grid input:focus{border-color:var(--blue); outline:none;}
         html += `<td colspan="${colCount-1}" style="padding:6px 10px;${BORDER}${FONT}font-size:14px;${value.trim()?BU:''}text-align:center;">${esc(value)}</td>`;
       } else {
         cells.forEach((val, c)=>{
+          if(c===0 && skipCol0) return; // célula já coberta pelo rowspan da linha do grupo
           const filled = (val||'').trim()!=='';
           let style = `padding:6px 10px;${BORDER}${FONT}font-size:14px;text-align:center;`;
           if(c===0 && label){
@@ -1336,7 +1370,8 @@ table.proposal-grid input:focus{border-color:var(--blue); outline:none;}
           } else if(filled){
             style += BU;
           }
-          html += `<td style="${style}">${esc(val||'')}</td>`;
+          const span = (c===0 && rowspan>1) ? ` rowspan="${rowspan}"` : '';
+          html += `<td${span} style="${style}">${esc(val||'')}</td>`;
         });
       }
       html += '</tr>';
