@@ -1276,18 +1276,23 @@ table.proposal-grid input:focus{border-color:var(--blue); outline:none;}
     const BLUE = 'background-color:aqua;';
     const BU = 'font-weight:bold;text-decoration:underline;'; // negrito + sublinhado, como no original
 
-    // Larguras fixas por coluna — a 2ª coluna (etiquetas curtas tipo
-    // "comunicações"/"dados móveis") precisa de mais espaço para não
-    // partir a palavra a meio. Atualmente/Proposta (3ª e 4ª) foram para o
-    // dobro da largura das outras duas, para textos como "3500 min. + 3500
-    // SMS redes nacionais" caberem numa única linha.
+    // Larguras fixas por coluna, em pixels absolutos (não percentagem) — a
+    // 2ª coluna (etiquetas curtas tipo "comunicações"/"dados móveis")
+    // precisa de mais espaço para não partir a palavra a meio, e
+    // Atualmente/Proposta (3ª e 4ª) ficam com o dobro da largura das outras
+    // duas, para textos como "3500 min. + 3500 SMS redes nacionais"
+    // caberem numa única linha.
+    const TABLE_WIDTH = 2320;
     const colWidths = colCount>=4
-      ? ['8%','9%','41.5%','41.5%']
-      : Array(colCount).fill((100/colCount).toFixed(2)+'%');
-    const colgroup = `<colgroup>${colWidths.map(w=>`<col style="width:${w};">`).join('')}</colgroup>`;
+      ? [186, 209, 963, 962]
+      : Array(colCount).fill(Math.round(TABLE_WIDTH/colCount));
+    const colgroup = `<colgroup>${colWidths.map(w=>`<col style="width:${w}px;">`).join('')}</colgroup>`;
 
-    // Tabela mais larga para acomodar as colunas de comparação alargadas.
-    let html = `<table cellspacing="0" cellpadding="0" border="0" style="border-collapse:collapse;${FONT}font-size:14px;width:100%;max-width:2320px;table-layout:fixed;">${colgroup}`;
+    // Largura fixa em pixels (não percentagem/max-width) — assim a tabela
+    // não encolhe para caber no ecrã em clientes de e-mail mais estreitos
+    // (telemóvel); o destinatário arrasta para o lado se for preciso, tal
+    // como as tuas propostas já saem hoje quando coladas do Excel.
+    let html = `<table cellspacing="0" cellpadding="0" border="0" width="${TABLE_WIDTH}" style="border-collapse:collapse;${FONT}font-size:14px;width:${TABLE_WIDTH}px;table-layout:fixed;">${colgroup}`;
 
     // cabeçalho ATUALMENTE/PROPOSTA — normalmente etiqueta exata, mas em
     // alguns modelos vem como "ATUALMENTE <nome do tarifário>" (célula com
