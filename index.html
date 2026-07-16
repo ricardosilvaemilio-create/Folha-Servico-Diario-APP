@@ -1115,6 +1115,10 @@ table.proposal-grid input:focus{border-color:var(--blue); outline:none;}
 
   const DEFAULT_PROPOSAL_INTRO = 'Espero que se encontre bem.\n\nConforme combinado, envio proposta de renegociação ao contrato MEO Empresas, através de uma tabela comparativa entre os serviços que tem atualmente e os serviços que estou a propor, destacando, a fundo azul, os benefícios.';
   const DEFAULT_PROPOSAL_OUTRO = 'Caso concorde com as condições, responda a este e-mail a indicar que aceita as novas condições.';
+  // Largura do e-mail de proposta (em pixels) — a tabela e o texto de
+  // introdução/fecho usam sempre a mesma largura, para o e-mail ler-se como
+  // um bloco só, em vez de o texto ficar mais estreito que a tabela.
+  const PROPOSAL_EMAIL_WIDTH = 2320;
 
   function openProposalModal(rec){
     proposalRec = rec;
@@ -1282,7 +1286,7 @@ table.proposal-grid input:focus{border-color:var(--blue); outline:none;}
     // Atualmente/Proposta (3ª e 4ª) ficam com o dobro da largura das outras
     // duas, para textos como "3500 min. + 3500 SMS redes nacionais"
     // caberem numa única linha.
-    const TABLE_WIDTH = 2320;
+    const TABLE_WIDTH = PROPOSAL_EMAIL_WIDTH;
     const colWidths = colCount>=4
       ? [186, 209, 963, 962]
       : Array(colCount).fill(Math.round(TABLE_WIDTH/colCount));
@@ -1397,12 +1401,21 @@ table.proposal-grid input:focus{border-color:var(--blue); outline:none;}
     }).join('');
   }
 
+  // Envolve o texto de introdução/fecho numa tabela de largura fixa igual à
+  // da tabela comparativa (PROPOSAL_EMAIL_WIDTH), para o e-mail ler-se como
+  // um bloco só em vez de o texto ficar mais estreito do que a tabela.
+  function paragraphsBlockToHtml(text, opts){
+    const inner = paragraphsToHtml(text, opts);
+    if(!inner) return '';
+    return `<table cellspacing="0" cellpadding="0" border="0" width="${PROPOSAL_EMAIL_WIDTH}" style="border-collapse:collapse;width:${PROPOSAL_EMAIL_WIDTH}px;table-layout:fixed;"><tr><td style="padding:0 0 6px 0;">${inner}</td></tr></table>`;
+  }
+
   function buildProposalEmailHtml(){
     const intro = document.getElementById('proposalIntro').value;
     const outro = document.getElementById('proposalOutro').value;
     let html = '';
-    if(intro.trim()) html += paragraphsToHtml(intro);
-    if(outro.trim()) html += paragraphsToHtml(outro, {bold:true});
+    if(intro.trim()) html += paragraphsBlockToHtml(intro);
+    if(outro.trim()) html += paragraphsBlockToHtml(outro, {bold:true});
     html += proposalGridToHtml();
     return html;
   }
