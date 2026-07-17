@@ -30,13 +30,6 @@
   #login-err { color:#f87171; font-size:13px; margin-top:10px; min-height:18px; }
   #login-remember { display:flex; align-items:center; justify-content:center; gap:8px; margin-top:14px; font-size:13px; color:#aaa; cursor:pointer; }
   #login-remember input { width:16px; height:16px; accent-color:#facc15; cursor:pointer; }
-  #print-receipt { display:none; }
-  @media print {
-    body * { visibility:hidden !important; }
-    #print-receipt, #print-receipt * { visibility:visible !important; }
-    #print-receipt { display:block !important; position:absolute; top:0; left:0; width:57mm; padding:1mm 2mm; color:#000; background:#fff; }
-    @page { size:57mm auto; margin:0; }
-  }
 </style>
 </head>
 <body>
@@ -55,7 +48,6 @@
 </div>
 <div id="app" style="display:none"></div>
 <div id="modals"></div>
-<div id="print-receipt"></div>
 <!-- Modal QR Contacto -->
 <div id="qr-modal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.85);z-index:9999;align-items:center;justify-content:center;padding:24px;" onclick="if(event.target===this)this.style.display='none'">
   <div style="background:#1e1e1e;border-radius:20px;padding:28px 24px;max-width:300px;width:100%;text-align:center;position:relative;">
@@ -650,12 +642,7 @@ function renderNav() {
   const nav=h("div",{style:{position:"fixed",bottom:"0",left:"50%",transform:"translateX(-50%)",width:"100%",maxWidth:"420px",background:"#1a1a1a",borderTop:"1px solid #333",padding:"10px 16px"}});
   if(S.tab===0){
     const can=canSave();
-    const row=h("div",{style:{display:"flex",gap:"10px"}});
-    row.append(h("button",{id:"btn_save",style:{flex:"1",padding:"13px",background:S.saved?"#16a34a":can?"#facc15":"#444",border:"none",borderRadius:"12px",color:can?"#111":"#888",fontWeight:"800",fontSize:"15px",cursor:can?"pointer":"not-allowed"},onclick:can?saveDay:null},S.saved?"✅ Guardado!":"💾 Gravar Dia"));
-    row.append(h("button",{id:"btn-print",title:"Imprimir talão (57mm)",style:{padding:"13px 18px",background:"#1e3a5f",border:"none",borderRadius:"12px",color:"#7dd3fc",fontSize:"18px",cursor:"pointer"},onclick:imprimirRecibo},"🖨️"));
-    nav.append(row);
-  }else if(S.tab===3 && S.resumoTab==="mensal"){
-    nav.append(h("button",{id:"btn-print-mensal",style:{width:"100%",padding:"13px",background:"#1e3a5f",border:"none",borderRadius:"12px",color:"#7dd3fc",fontWeight:"800",fontSize:"15px",cursor:"pointer"},onclick:imprimirReciboMensal},"🖨️ Imprimir Resumo do Mês"));
+    nav.append(h("button",{id:"btn_save",style:{width:"100%",padding:"13px",background:S.saved?"#16a34a":can?"#facc15":"#444",border:"none",borderRadius:"12px",color:can?"#111":"#888",fontWeight:"800",fontSize:"15px",cursor:can?"pointer":"not-allowed"},onclick:can?saveDay:null},S.saved?"✅ Guardado!":"💾 Gravar Dia"));
   }else{
     nav.append(h("div",{style:{height:"44px"}}));
   }
@@ -874,225 +861,6 @@ async function importarGeolink() {
     if(btn){ btn.textContent="❌"; btn.disabled=false; setTimeout(()=>{ btn.textContent="🔄 Geolink"; }, 2000); }
     S.err = "Erro de ligação ao Geolink"; updateStatus();
   }
-}
-
-// --- IMPRESSÃO 57mm (Bluetooth ESC/POS, com fallback para impressão do sistema) ---
-const PRINT_BT_SERVICES = [
-  "000018f0-0000-1000-8000-00805f9b34fb",
-  "0000ff00-0000-1000-8000-00805f9b34fb",
-  "49535343-fe7d-4ae5-8fa9-9fafd205e455",
-  "6e400001-b5a3-f393-e0a9-e50e24dcca9e",
-  "0000fee7-0000-1000-8000-00805f9b34fb"
-];
-const BT_ID_KEY = "fsd_bt_printer_id";
-let BT_DEVICE_CACHE = null, BT_CHAR_CACHE = null;
-
-function stripAcentos_(s) {
-  const map = {"á":"a","à":"a","â":"a","ã":"a","ä":"a","é":"e","è":"e","ê":"e","ë":"e","í":"i","ì":"i","î":"i","ï":"i","ó":"o","ò":"o","ô":"o","õ":"o","ö":"o","ú":"u","ù":"u","û":"u","ü":"u","ç":"c","ñ":"n","Á":"A","À":"A","Â":"A","Ã":"A","É":"E","Ê":"E","Í":"I","Ó":"O","Ô":"O","Õ":"O","Ú":"U","Ç":"C"};
-  return String(s==null?"":s).replace(/[áàâãäéèêëíìîïóòôõöúùûüçñÁÀÂÃÉÊÍÓÔÕÚÇ]/g, ch => map[ch] || ch);
-}
-function padLine_(label, value, width) {
-  width = width || 32;
-  label = String(label); value = String(value);
-  const sp = Math.max(1, width - label.length - value.length);
-  return label + " ".repeat(sp) + value;
-}
-function buildReceiptLines(date, b, c) {
-  // Cada linha é texto simples {t} OU um par {label,value} — cada formato
-  // (HTML/sistema vs ESC/POS) trata o alinhamento à sua maneira.
-  const L = [];
-  L.push({t:"FOLHA DE SERVIÇO", align:"center", bold:true, big:true});
-  L.push({t:date, align:"center"});
-  L.push({sep:true});
-  L.push({label:"KM Inicial:", value:String(b.kmI||"0")});
-  L.push({label:"KM Final:", value:String(b.kmF||"0")});
-  L.push({label:"Total Percorrido:", value:fkm(c.tkm)});
-  L.push({sep:true});
-  L.push({label:"Faturado:", value:eur(c.fat)});
-  L.push({label:"Multibanco:", value:eur(c.mb)});
-  L.push({label:"Dinheiro:", value:eur(c.din)});
-  L.push({sep:true});
-  L.push({label:"Comissão (40%):", value:eur(c.comB)});
-  L.push({label:"IVA (23%):", value:eur(c.ivaV)});
-  L.push({label:"Total Comissão:", value:eur(c.com), bold:true});
-  L.push({sep:true});
-  L.push({label:"Combustível:", value:eur(c.comb)});
-  if(c.port>0) L.push({label:"Portagens:", value:eur(c.port)});
-  (b.exps||[]).forEach(e=>{
-    const val=parseFloat(e.valor)||0;
-    if(val>0) L.push({label:e.category+":", value:eur(val)});
-  });
-  L.push({sep:true});
-  L.push({label:"ENTREGAR:", value:eur(c.entr), bold:true, big:true});
-  if(b.obs) { L.push({sep:true}); L.push({t:"Obs: "+b.obs}); }
-  L.push({blank:true});
-  L.push({t:"MJE Unip. Lda", align:"center"});
-  L.push({t:"Impresso "+new Date().toLocaleString('pt-PT'), align:"center", small:true});
-  return L;
-}
-function renderReceiptHTML(lines) {
-  const el = document.getElementById("print-receipt");
-  el.innerHTML = "";
-  el.style.fontFamily = "monospace";
-  lines.forEach(l=>{
-    if(l.sep){ el.append(h("div",{style:{borderTop:"1px dashed #000",margin:"4px 0"}})); return; }
-    if(l.blank){ el.append(h("div",{style:{height:"8px"}})); return; }
-    const fontWeight=l.bold?"800":"400", fontSize=l.big?"15px":(l.small?"9px":"11px");
-    if(l.label!=null){
-      el.append(h("div",{style:{display:"flex",justifyContent:"space-between",gap:"6px",fontWeight,fontSize,marginBottom:"2px"}},
-        h("span",{},l.label), h("span",{},l.value)
-      ));
-      return;
-    }
-    el.append(h("div",{style:{
-      textAlign:l.align||"left", fontWeight, fontSize, whiteSpace:"pre-wrap", marginBottom:"2px"
-    }}, l.t));
-  });
-}
-function imprimirViaSistema(lines) {
-  renderReceiptHTML(lines);
-  setTimeout(()=>{ window.print(); }, 50);
-}
-function escSafeText_(s) {
-  // A maioria das impressoras térmicas baratas não suporta UTF-8 nem o
-  // símbolo €, por isso simplificamos para ASCII puro só neste caminho.
-  return stripAcentos_(String(s==null?"":s)).replace(/€/g, "EUR ");
-}
-function buildEscPos_(lines) {
-  const bytes = [];
-  const push = (...b)=>b.forEach(x=>bytes.push(x));
-  push(0x1B,0x40);
-  lines.forEach(l=>{
-    if(l.sep){ push(0x1B,0x61,0x00); const s="-".repeat(32)+"\n"; for(const ch of s) push(ch.charCodeAt(0)); return; }
-    if(l.blank){ push(0x0A); return; }
-    const align = l.align==="center"?0x01:(l.align==="right"?0x02:0x00);
-    push(0x1B,0x61,align);
-    push(0x1B,0x45,l.bold?1:0);
-    push(0x1D,0x21,l.big?0x11:0x00);
-    const txt = (l.label!=null ? padLine_(escSafeText_(l.label), escSafeText_(l.value)) : escSafeText_(l.t))+"\n";
-    for(const ch of txt) push(ch.charCodeAt(0) & 0xFF);
-    push(0x1D,0x21,0x00);
-    push(0x1B,0x45,0);
-  });
-  push(0x0A,0x0A,0x0A,0x0A);
-  return new Uint8Array(bytes);
-}
-async function findWritableChar_(device) {
-  const server = await device.gatt.connect();
-  const services = await server.getPrimaryServices();
-  const tried = [];
-  for(const svc of services) {
-    const chars = await svc.getCharacteristics();
-    for(const ch of chars) {
-      tried.push(svc.uuid+" / "+ch.uuid);
-      if(ch.properties.write || ch.properties.writeWithoutResponse) return ch;
-    }
-  }
-  console.warn("Impressão BT: nenhuma característica de escrita encontrada. Serviços vistos:", tried);
-  S.err = "Impressora Bluetooth ligada mas sem canal de escrita conhecido.";
-  throw new Error("Sem característica de escrita");
-}
-async function writeInChunks_(char, bytes) {
-  const CHUNK = 180;
-  for(let i=0;i<bytes.length;i+=CHUNK){
-    const slice = bytes.slice(i,i+CHUNK);
-    if(char.properties.writeWithoutResponse) await char.writeValueWithoutResponse(slice);
-    else await char.writeValue(slice);
-    await new Promise(r=>setTimeout(r,30));
-  }
-}
-async function imprimirViaBluetooth(lines) {
-  let char = (BT_CHAR_CACHE && BT_DEVICE_CACHE && BT_DEVICE_CACHE.gatt.connected) ? BT_CHAR_CACHE : null;
-  if(!char) {
-    let device = BT_DEVICE_CACHE;
-    if(!device) {
-      const savedId = localStorage.getItem(BT_ID_KEY);
-      if(savedId && navigator.bluetooth.getDevices) {
-        try {
-          const known = await navigator.bluetooth.getDevices();
-          device = known.find(d=>d.id===savedId) || null;
-        } catch(e){ device = null; }
-      }
-    }
-    if(!device) {
-      device = await navigator.bluetooth.requestDevice({ acceptAllDevices:true, optionalServices: PRINT_BT_SERVICES });
-      try{ localStorage.setItem(BT_ID_KEY, device.id); }catch(e){}
-    }
-    char = await findWritableChar_(device);
-    BT_DEVICE_CACHE = device; BT_CHAR_CACHE = char;
-  }
-  await writeInChunks_(char, buildEscPos_(lines));
-}
-async function imprimirLinhas_(lines, btnId) {
-  const btn = document.getElementById(btnId);
-  const orig = btn ? btn.textContent : "";
-  if(btn){ btn.textContent="⏳"; btn.disabled=true; }
-  try {
-    if(navigator.bluetooth) {
-      await imprimirViaBluetooth(lines);
-      if(btn){ btn.textContent="✅"; setTimeout(()=>{btn.textContent=orig;btn.disabled=false;},2000); }
-    } else {
-      imprimirViaSistema(lines);
-      if(btn){ btn.textContent=orig; btn.disabled=false; }
-    }
-  } catch(e) {
-    console.warn("Impressão Bluetooth falhou, a tentar impressão do sistema:", e);
-    try {
-      imprimirViaSistema(lines);
-      if(btn){ btn.textContent=orig; btn.disabled=false; }
-    } catch(e2) {
-      S.err = "Falha ao imprimir: "+e2.message; updateStatus();
-      if(btn){ btn.textContent="❌"; setTimeout(()=>{btn.textContent=orig;btn.disabled=false;},2000); }
-    }
-  }
-}
-async function imprimirRecibo() {
-  syncDOM();
-  const c = calc(B);
-  if((parseFloat(B.kmI)||0)<=0 || (parseFloat(B.kmF)||0)<=0) {
-    S.err = "Preenche os KMs antes de imprimir."; updateStatus(); return;
-  }
-  await imprimirLinhas_(buildReceiptLines(S.date, B, c), "btn-print");
-}
-function buildReceiptLinesMensal(month, mD) {
-  const ds=mD.map(d=>calc(newBuf(getDay(d))));
-  const tKm=ds.reduce((s,d)=>s+d.tkm,0), tVf=ds.reduce((s,d)=>s+d.fat,0), tMb=ds.reduce((s,d)=>s+d.mb,0);
-  const tC=ds.reduce((s,d)=>s+d.comb,0), tP=ds.reduce((s,d)=>s+d.port,0), tCom=ds.reduce((s,d)=>s+d.com,0);
-  const dias=ds.filter(d=>d.fat>0).length;
-  const cats={}; let tDep=0;
-  mD.forEach(d=>(getDay(d).expenses||[]).forEach(e=>{
-    if(e.category==="Depósito") tDep+=(parseFloat(e.valor)||0);
-    else cats[e.category]=(cats[e.category]||0)+(parseFloat(e.valor)||0);
-  }));
-  const tOut=Object.values(cats).reduce((s,v)=>s+v,0);
-  const tEntr=tVf-tCom-tC+tP-tOut-tDep-tMb;
-
-  const L=[];
-  L.push({t:"FOLHA DE SERVIÇO", align:"center", bold:true, big:true});
-  L.push({t:"Resumo Mensal", align:"center"});
-  L.push({t:month, align:"center"});
-  L.push({sep:true});
-  L.push({label:"Dias Trabalhados:", value:dias+" dias"});
-  L.push({label:"Total KM:", value:fkm(tKm)});
-  L.push({sep:true});
-  L.push({label:"Total Faturado:", value:eur(tVf)});
-  L.push({label:"Comissão c/ IVA:", value:eur(tCom)});
-  L.push({label:"Combustível:", value:eur(tC)});
-  L.push({label:"Multibanco:", value:eur(tMb)});
-  if(tDep>0) L.push({label:"Depósito Bancário:", value:eur(tDep)});
-  Object.entries(cats).sort((a,b)=>b[1]-a[1]).forEach(([cat,val])=>L.push({label:cat+":", value:eur(val)}));
-  if(tP>0) L.push({label:"Portagens:", value:eur(tP)});
-  L.push({sep:true});
-  L.push({label:"ENTREGAR:", value:eur(tEntr), bold:true, big:true});
-  L.push({blank:true});
-  L.push({t:"MJE Unip. Lda", align:"center"});
-  L.push({t:"Impresso "+new Date().toLocaleString('pt-PT'), align:"center", small:true});
-  return L;
-}
-async function imprimirReciboMensal() {
-  const mD=Object.keys(S.records).filter(d=>d.startsWith(S.month));
-  if(!mD.length) { S.err="Sem registos deste mês para imprimir."; updateStatus(); return; }
-  await imprimirLinhas_(buildReceiptLinesMensal(S.month, mD), "btn-print-mensal");
 }
 
 // --- LOGIN ---
