@@ -654,6 +654,8 @@ function renderNav() {
     row.append(h("button",{id:"btn_save",style:{flex:"1",padding:"13px",background:S.saved?"#16a34a":can?"#facc15":"#444",border:"none",borderRadius:"12px",color:can?"#111":"#888",fontWeight:"800",fontSize:"15px",cursor:can?"pointer":"not-allowed"},onclick:can?saveDay:null},S.saved?"✅ Guardado!":"💾 Gravar Dia"));
     row.append(h("button",{id:"btn-print",title:"Imprimir talão (57mm)",style:{padding:"13px 18px",background:"#1e3a5f",border:"none",borderRadius:"12px",color:"#7dd3fc",fontSize:"18px",cursor:"pointer"},onclick:imprimirRecibo},"🖨️"));
     nav.append(row);
+  }else if(S.tab===3 && S.resumoTab==="mensal"){
+    nav.append(h("button",{id:"btn-print-mensal",style:{width:"100%",padding:"13px",background:"#1e3a5f",border:"none",borderRadius:"12px",color:"#7dd3fc",fontWeight:"800",fontSize:"15px",cursor:"pointer"},onclick:imprimirReciboMensal},"🖨️ Imprimir Resumo do Mês"));
   }else{
     nav.append(h("div",{style:{height:"44px"}}));
   }
@@ -1021,33 +1023,76 @@ async function imprimirViaBluetooth(lines) {
   }
   await writeInChunks_(char, buildEscPos_(lines));
 }
-async function imprimirRecibo() {
-  const btn = document.getElementById("btn-print");
-  syncDOM();
-  const c = calc(B);
-  if((parseFloat(B.kmI)||0)<=0 || (parseFloat(B.kmF)||0)<=0) {
-    S.err = "Preenche os KMs antes de imprimir."; updateStatus(); return;
-  }
-  const lines = buildReceiptLines(S.date, B, c);
+async function imprimirLinhas_(lines, btnId) {
+  const btn = document.getElementById(btnId);
+  const orig = btn ? btn.textContent : "";
   if(btn){ btn.textContent="⏳"; btn.disabled=true; }
   try {
     if(navigator.bluetooth) {
       await imprimirViaBluetooth(lines);
-      if(btn){ btn.textContent="✅"; setTimeout(()=>{btn.textContent="🖨️";btn.disabled=false;},2000); }
+      if(btn){ btn.textContent="✅"; setTimeout(()=>{btn.textContent=orig;btn.disabled=false;},2000); }
     } else {
       imprimirViaSistema(lines);
-      if(btn){ btn.textContent="🖨️"; btn.disabled=false; }
+      if(btn){ btn.textContent=orig; btn.disabled=false; }
     }
   } catch(e) {
     console.warn("Impressão Bluetooth falhou, a tentar impressão do sistema:", e);
     try {
       imprimirViaSistema(lines);
-      if(btn){ btn.textContent="🖨️"; btn.disabled=false; }
+      if(btn){ btn.textContent=orig; btn.disabled=false; }
     } catch(e2) {
       S.err = "Falha ao imprimir: "+e2.message; updateStatus();
-      if(btn){ btn.textContent="❌"; setTimeout(()=>{btn.textContent="🖨️";btn.disabled=false;},2000); }
+      if(btn){ btn.textContent="❌"; setTimeout(()=>{btn.textContent=orig;btn.disabled=false;},2000); }
     }
   }
+}
+async function imprimirRecibo() {
+  syncDOM();
+  const c = calc(B);
+  if((parseFloat(B.kmI)||0)<=0 || (parseFloat(B.kmF)||0)<=0) {
+    S.err = "Preenche os KMs antes de imprimir."; updateStatus(); return;
+  }
+  await imprimirLinhas_(buildReceiptLines(S.date, B, c), "btn-print");
+}
+function buildReceiptLinesMensal(month, mD) {
+  const ds=mD.map(d=>calc(newBuf(getDay(d))));
+  const tKm=ds.reduce((s,d)=>s+d.tkm,0), tVf=ds.reduce((s,d)=>s+d.fat,0), tMb=ds.reduce((s,d)=>s+d.mb,0);
+  const tC=ds.reduce((s,d)=>s+d.comb,0), tP=ds.reduce((s,d)=>s+d.port,0), tCom=ds.reduce((s,d)=>s+d.com,0);
+  const dias=ds.filter(d=>d.fat>0).length;
+  const cats={}; let tDep=0;
+  mD.forEach(d=>(getDay(d).expenses||[]).forEach(e=>{
+    if(e.category==="Depósito") tDep+=(parseFloat(e.valor)||0);
+    else cats[e.category]=(cats[e.category]||0)+(parseFloat(e.valor)||0);
+  }));
+  const tOut=Object.values(cats).reduce((s,v)=>s+v,0);
+  const tEntr=tVf-tCom-tC+tP-tOut-tDep-tMb;
+
+  const L=[];
+  L.push({t:"FOLHA DE SERVIÇO", align:"center", bold:true, big:true});
+  L.push({t:"Resumo Mensal", align:"center"});
+  L.push({t:month, align:"center"});
+  L.push({sep:true});
+  L.push({label:"Dias Trabalhados:", value:dias+" dias"});
+  L.push({label:"Total KM:", value:fkm(tKm)});
+  L.push({sep:true});
+  L.push({label:"Total Faturado:", value:eur(tVf)});
+  L.push({label:"Comissão c/ IVA:", value:eur(tCom)});
+  L.push({label:"Combustível:", value:eur(tC)});
+  L.push({label:"Multibanco:", value:eur(tMb)});
+  if(tDep>0) L.push({label:"Depósito Bancário:", value:eur(tDep)});
+  Object.entries(cats).sort((a,b)=>b[1]-a[1]).forEach(([cat,val])=>L.push({label:cat+":", value:eur(val)}));
+  if(tP>0) L.push({label:"Portagens:", value:eur(tP)});
+  L.push({sep:true});
+  L.push({label:"ENTREGAR:", value:eur(tEntr), bold:true, big:true});
+  L.push({blank:true});
+  L.push({t:"MJE Unip. Lda", align:"center"});
+  L.push({t:"Impresso "+new Date().toLocaleString('pt-PT'), align:"center", small:true});
+  return L;
+}
+async function imprimirReciboMensal() {
+  const mD=Object.keys(S.records).filter(d=>d.startsWith(S.month));
+  if(!mD.length) { S.err="Sem registos deste mês para imprimir."; updateStatus(); return; }
+  await imprimirLinhas_(buildReceiptLinesMensal(S.month, mD), "btn-print-mensal");
 }
 
 // --- LOGIN ---
